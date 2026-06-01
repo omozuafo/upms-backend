@@ -2,6 +2,7 @@ services:
   - type: web
     name: upms-backend
     env: docker
+    plan: free
     envVars:
       - key: APP_ENV
         value: production
@@ -30,3 +31,4 @@ databases:
   - name: upms-db
     databaseName: upms_db
     user: upms
+    plan: free
