@@ -11,6 +11,44 @@ Route::get('/health', function () {
 
 Route::get('/auth/debug', function () {
     $results = [];
+    
+    // 1. Test database connection
+    try {
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+        $results['db_connection'] = 'OK';
+    } catch (\Exception $e) {
+        $results['db_connection'] = 'FAIL: ' . $e->getMessage();
+    }
+
+    // 2. Try simulated registration (with rollback)
+    try {
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        
+        $tempEmail = 'temp_' . time() . '@example.com';
+        $tempUser = \App\Models\User::create([
+            'name' => 'Temp User',
+            'username' => 'tempuser' . time(),
+            'email' => $tempEmail,
+            'phone' => '1234567890',
+            'password' => \Illuminate\Support\Facades\Hash::make('Password123!'),
+            'role' => 'tenant',
+        ]);
+        
+        $results['test_registration'] = [
+            'success' => true,
+            'user_id' => $tempUser->id,
+        ];
+        
+        \Illuminate\Support\Facades\DB::rollBack();
+    } catch (\Exception $e) {
+        \Illuminate\Support\Facades\DB::rollBack();
+        $results['test_registration'] = [
+            'success' => false,
+            'error' => $e->getMessage(),
+            'trace' => substr($e->getTraceAsString(), 0, 500)
+        ];
+    }
+
     $admins = [
         'superadmin@upms.com' => 'asdfghj69.',
         'admin@example.com' => 'password',
