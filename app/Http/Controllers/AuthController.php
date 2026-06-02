@@ -89,7 +89,7 @@ class AuthController extends Controller
             'role' => $request->get('role'),
         ]);
 
-        $token = Auth::login($user);
+        $token = Auth::guard('api')->login($user);
 
         return response()->json([
             'message' => 'User successfully registered',
@@ -132,11 +132,21 @@ class AuthController extends Controller
     {
         $credentials = request(['email', 'password']);
 
-        if (! $token = Auth::attempt($credentials)) {
+        // Log login attempt and password check for debugging
+        $user = User::where('email', $credentials['email'])->first();
+        if ($user) {
+            $passwordMatches = Hash::check($credentials['password'], $user->password);
+            \Log::info("Login attempt - User found: {$credentials['email']}. Password matches: " . ($passwordMatches ? 'YES' : 'NO'));
+            \Log::info("Stored hash: " . $user->password);
+        } else {
+            \Log::info("Login attempt - User NOT found: {$credentials['email']}");
+        }
+
+        if (! $token = Auth::guard('api')->attempt($credentials)) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        $user = Auth::user();
+        $user = Auth::guard('api')->user();
         
         // Generate Unique Session Key
         $sessionKey = (string) \Illuminate\Support\Str::uuid();
@@ -155,7 +165,7 @@ class AuthController extends Controller
         $user->session_key = $sessionKey;
         
         // Generate token with custom claims
-        $token = Auth::claims(['session_key' => $sessionKey])->login($user);
+        $token = Auth::guard('api')->claims(['session_key' => $sessionKey])->login($user);
 
         return $this->respondWithToken($token);
     }
@@ -167,7 +177,7 @@ class AuthController extends Controller
      */
     public function me()
     {
-        return response()->json(Auth::user());
+        return response()->json(Auth::guard('api')->user());
     }
 
     /**
@@ -184,7 +194,7 @@ class AuthController extends Controller
             \App\Models\UserSession::where('session_key', $sessionKey)->update(['is_active' => false]);
         }
 
-        Auth::logout();
+        Auth::guard('api')->logout();
 
         return response()->json(['message' => 'Successfully logged out']);
     }
@@ -196,7 +206,7 @@ class AuthController extends Controller
      */
     public function refresh()
     {
-        return $this->respondWithToken(Auth::refresh());
+        return $this->respondWithToken(Auth::guard('api')->refresh());
     }
 
     /**
@@ -211,8 +221,8 @@ class AuthController extends Controller
         return response()->json([
             'access_token' => $token,
             'token_type' => 'bearer',
-            'expires_in' => Auth::factory()->getTTL() * 60,
-            'user' => Auth::user()
+            'expires_in' => Auth::guard('api')->factory()->getTTL() * 60,
+            'user' => Auth::guard('api')->user()
         ]);
     }
 }
