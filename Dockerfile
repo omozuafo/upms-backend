@@ -23,18 +23,24 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 WORKDIR /var/www/html
 
 # Configure Apache DocumentRoot to point to Laravel's public directory
-ENV APACHE_DOCUMENT_ROOT /var/www/html/public
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
 # Enable Apache mod_rewrite for Laravel routing
 RUN a2enmod rewrite
 
-# Copy existing application directory contents
-COPY . /var/www/html
+# Copy composer files first (better layer caching)
+COPY composer.json composer.lock ./
 
 # Install Laravel dependencies (--no-scripts avoids artisan calls during build)
-RUN composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev --no-scripts
+RUN composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev --no-scripts --ignore-platform-reqs
+
+# Copy the rest of the application
+COPY . /var/www/html
+
+# Generate optimized autoloader after all files are present
+RUN composer dump-autoload --optimize --no-dev
 
 # Set permissions for storage and bootstrap/cache
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache

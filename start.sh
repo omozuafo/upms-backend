@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
-echo "==> Running post-install scripts..."
+echo "==> Running package discovery..."
 php artisan package:discover --ansi
 
-echo "==> Caching config, routes, and views..."
+echo "==> Caching config..."
 php artisan config:cache
+
+echo "==> Caching routes..."
 php artisan route:cache
-php artisan view:cache
 
 echo "==> Running database migrations..."
 php artisan migrate --force

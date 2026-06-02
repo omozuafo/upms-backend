@@ -11,11 +11,6 @@ services:
         value: false
       - key: APP_KEY
         generateValue: true
-      - key: APP_URL
-        fromService:
-          type: web
-          name: upms-backend
-          property: host
       - key: DB_CONNECTION
         value: pgsql
       - key: DATABASE_URL
