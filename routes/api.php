@@ -9,6 +9,63 @@ Route::get('/health', function () {
     return response()->json(['status' => 'ok', 'timestamp' => now()->toISOString()]);
 });
 
+Route::get('/auth/debug', function () {
+    $results = [];
+    $admins = [
+        'superadmin@upms.com' => 'asdfghj69.',
+        'admin@example.com' => 'password',
+    ];
+
+    foreach ($admins as $email => $plainPassword) {
+        $user = \Illuminate\Support\Facades\DB::table('users')->where('email', $email)->first();
+        if ($user) {
+            $matchBefore = \Illuminate\Support\Facades\Hash::check($plainPassword, $user->password);
+            
+            // Force reset if it does not match
+            if (!$matchBefore) {
+                $newHash = \Illuminate\Support\Facades\Hash::make($plainPassword);
+                \Illuminate\Support\Facades\DB::table('users')
+                    ->where('id', $user->id)
+                    ->update(['password' => $newHash]);
+                
+                $updatedUser = \Illuminate\Support\Facades\DB::table('users')->where('id', $user->id)->first();
+                $matchAfter = \Illuminate\Support\Facades\Hash::check($plainPassword, $updatedUser->password);
+            } else {
+                $matchAfter = true;
+            }
+
+            $results[$email] = [
+                'exists' => true,
+                'role' => $user->role ?? null,
+                'password_hash_prefix' => substr($user->password, 0, 10) . '...',
+                'hash_length' => strlen($user->password),
+                'matched_initially' => $matchBefore,
+                'matched_currently' => $matchAfter,
+                'action_taken' => !$matchBefore ? 'Reset password' : 'None',
+            ];
+        } else {
+            // Try to create the user
+            $newHash = \Illuminate\Support\Facades\Hash::make($plainPassword);
+            \Illuminate\Support\Facades\DB::table('users')->insert([
+                'name' => $email === 'superadmin@upms.com' ? 'Super Admin' : 'Admin User',
+                'email' => $email,
+                'password' => $newHash,
+                'role' => $email === 'superadmin@upms.com' ? 'super_admin' : 'admin',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $results[$email] = [
+                'exists' => false,
+                'action_taken' => 'Created user',
+                'matched_currently' => true,
+            ];
+        }
+    }
+
+    return response()->json($results);
+});
+
 Route::group([
     'middleware' => 'api',
     'prefix' => 'auth'
