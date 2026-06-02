@@ -33,8 +33,8 @@ RUN a2enmod rewrite
 # Copy existing application directory contents
 COPY . /var/www/html
 
-# Install Laravel dependencies
-RUN composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+# Install Laravel dependencies (--no-scripts avoids artisan calls during build)
+RUN composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev --no-scripts
 
 # Set permissions for storage and bootstrap/cache
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
@@ -47,4 +47,4 @@ RUN chmod +x start.sh
 EXPOSE 80
 
 # Run migrations and start Apache
-CMD ["./start.sh"]
+CMD ["/bin/bash", "start.sh"]

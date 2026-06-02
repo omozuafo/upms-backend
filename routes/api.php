@@ -4,6 +4,11 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Broadcast;
 use App\Http\Controllers\AuthController;
 
+// Health check endpoint for Render deployment monitoring
+Route::get('/health', function () {
+    return response()->json(['status' => 'ok', 'timestamp' => now()->toISOString()]);
+});
+
 Route::group([
     'middleware' => 'api',
     'prefix' => 'auth'

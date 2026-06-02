@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+echo "==> Running post-install scripts..."
+php artisan package:discover --ansi
+
 echo "==> Caching config, routes, and views..."
 php artisan config:cache
 php artisan route:cache
@@ -10,4 +13,4 @@ echo "==> Running database migrations..."
 php artisan migrate --force
 
 echo "==> Starting Apache server..."
-apache2-foreground
+exec apache2-foreground
