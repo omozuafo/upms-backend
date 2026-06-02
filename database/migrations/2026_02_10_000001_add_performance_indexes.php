@@ -32,7 +32,7 @@ return new class extends Migration
         Schema::table('leases', function (Blueprint $table) {
             $table->index('tenant_id');
             $table->index('unit_id');
-            $table->index('property_id');
+            // Note: leases table does NOT have a property_id column
             $table->index('status');
             $table->index(['status', 'end_date']);
             $table->index(['tenant_id', 'status']);
@@ -58,9 +58,9 @@ return new class extends Migration
         });
 
         // Users table indexes
+        // Note: email already has a unique index from the create_users_table migration
         Schema::table('users', function (Blueprint $table) {
             $table->index('role');
-            $table->index('email');
         });
     }
 
@@ -86,7 +86,7 @@ return new class extends Migration
         Schema::table('leases', function (Blueprint $table) {
             $table->dropIndex(['tenant_id']);
             $table->dropIndex(['unit_id']);
-            $table->dropIndex(['property_id']);
+            // Note: no property_id index to drop
             $table->dropIndex(['status']);
             $table->dropIndex(['status', 'end_date']);
             $table->dropIndex(['tenant_id', 'status']);
@@ -111,7 +111,7 @@ return new class extends Migration
 
         Schema::table('users', function (Blueprint $table) {
             $table->dropIndex(['role']);
-            $table->dropIndex(['email']);
+            // Note: email unique index is managed by create_users_table migration
         });
     }
 };
