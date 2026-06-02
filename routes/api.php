@@ -34,6 +34,18 @@ Route::get('/auth/debug', function () {
                 $matchAfter = true;
             }
 
+            // Attempt login via the api guard
+            $tokenAttempt = null;
+            $attemptError = null;
+            try {
+                $tokenAttempt = \Illuminate\Support\Facades\Auth::guard('api')->attempt([
+                    'email' => $email,
+                    'password' => $plainPassword
+                ]);
+            } catch (\Exception $e) {
+                $attemptError = $e->getMessage();
+            }
+
             $results[$email] = [
                 'exists' => true,
                 'role' => $user->role ?? null,
@@ -41,6 +53,9 @@ Route::get('/auth/debug', function () {
                 'hash_length' => strlen($user->password),
                 'matched_initially' => $matchBefore,
                 'matched_currently' => $matchAfter,
+                'attempt_login_success' => $tokenAttempt ? true : false,
+                'attempt_login_token_prefix' => $tokenAttempt ? substr($tokenAttempt, 0, 15) . '...' : null,
+                'attempt_login_error' => $attemptError,
                 'action_taken' => !$matchBefore ? 'Reset password' : 'None',
             ];
         } else {
