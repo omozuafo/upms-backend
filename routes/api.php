@@ -50,21 +50,30 @@ Route::get('/auth/debug', function () {
     }
 
     $admins = [
-        'superadmin@upms.com' => 'asdfghj69.',
-        'admin@example.com' => 'password',
+        'superadmin@upms.com' => ['password' => 'asdfghj69.', 'role' => 'super_admin', 'name' => 'Super Admin'],
+        'admin@example.com' => ['password' => 'password', 'role' => 'admin', 'name' => 'Admin User'],
+        'accounting@upms.com' => ['password' => 'password', 'role' => 'accounting_staff', 'name' => 'Accounting Staff'],
+        'maintenance@upms.com' => ['password' => 'password', 'role' => 'maintenance_staff', 'name' => 'Maintenance Staff'],
     ];
 
-    foreach ($admins as $email => $plainPassword) {
+    foreach ($admins as $email => $data) {
+        $plainPassword = $data['password'];
+        $role = $data['role'];
+        $name = $data['name'];
+
         $user = \Illuminate\Support\Facades\DB::table('users')->where('email', $email)->first();
         if ($user) {
             $matchBefore = \Illuminate\Support\Facades\Hash::check($plainPassword, $user->password);
             
-            // Force reset if it does not match
-            if (!$matchBefore) {
+            // Force reset if it does not match or role mismatches
+            if (!$matchBefore || $user->role !== $role) {
                 $newHash = \Illuminate\Support\Facades\Hash::make($plainPassword);
                 \Illuminate\Support\Facades\DB::table('users')
                     ->where('id', $user->id)
-                    ->update(['password' => $newHash]);
+                    ->update([
+                        'password' => $newHash,
+                        'role' => $role
+                    ]);
                 
                 $updatedUser = \Illuminate\Support\Facades\DB::table('users')->where('id', $user->id)->first();
                 $matchAfter = \Illuminate\Support\Facades\Hash::check($plainPassword, $updatedUser->password);
@@ -100,10 +109,10 @@ Route::get('/auth/debug', function () {
             // Try to create the user
             $newHash = \Illuminate\Support\Facades\Hash::make($plainPassword);
             \Illuminate\Support\Facades\DB::table('users')->insert([
-                'name' => $email === 'superadmin@upms.com' ? 'Super Admin' : 'Admin User',
+                'name' => $name,
                 'email' => $email,
                 'password' => $newHash,
-                'role' => $email === 'superadmin@upms.com' ? 'super_admin' : 'admin',
+                'role' => $role,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
