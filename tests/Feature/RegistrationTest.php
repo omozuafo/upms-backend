@@ -16,10 +16,16 @@ class RegistrationTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'phone' => '1234567890',
-            'password' => 'password',
-            'password_confirmation' => 'password',
+            'username' => 'testuser',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
             'role' => 'tenant',
         ]);
+
+        if ($response->status() !== 201) {
+            fwrite(STDERR, "Reg failed. Status: " . $response->status() . "\n");
+            fwrite(STDERR, "Response body: " . $response->getContent() . "\n");
+        }
 
         $response->assertStatus(201);
         $this->assertDatabaseHas('users', [
@@ -33,8 +39,9 @@ class RegistrationTest extends TestCase
         $response = $this->postJson('/api/auth/register', [
             'name' => 'Test User',
             'email' => 'test@example.com',
-            'password' => 'password',
-            'password_confirmation' => 'password',
+            'username' => 'testuser',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
             'role' => 'tenant',
         ]);
 
