@@ -15,21 +15,34 @@ class Expense extends Model
 
     protected $fillable = [
         'property_id',
-        'category', // Plumbing, Electrical, Utilities, Insurance, Taxes, etc.
+        'category',
+        'purpose',
         'amount',
         'date',
         'description',
-        'vendor', // Name of service provider
+        'vendor',
         'invoice_number',
-        'status', // Paid, Pending
+        'receipt_number',
+        'account_name',
+        'account_number',
+        'payment_timestamp',
+        'status', // Pending, Approved, Rejected, Paid
+        'created_by',
+        'rejection_reason',
     ];
 
     protected $casts = [
         'date' => 'date',
+        'payment_timestamp' => 'datetime',
     ];
 
     public function property()
     {
         return $this->belongsTo(Property::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

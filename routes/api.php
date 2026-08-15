@@ -166,6 +166,8 @@ Route::middleware(['auth:api', 'session.active'])->group(function () {
     Route::apiResource('tenants', \App\Http\Controllers\TenantController::class);
     Route::apiResource('leases', \App\Http\Controllers\LeaseController::class);
     Route::apiResource('payments', \App\Http\Controllers\PaymentController::class);
+    Route::post('expenses/{id}/approve', [\App\Http\Controllers\ExpenseController::class, 'approve']);
+    Route::post('expenses/{id}/reject', [\App\Http\Controllers\ExpenseController::class, 'reject']);
     Route::apiResource('expenses', \App\Http\Controllers\ExpenseController::class);
     
     // Issue stats must be defined before apiResource to avoid route conflict
