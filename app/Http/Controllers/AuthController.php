@@ -130,19 +130,24 @@ class AuthController extends Controller
      */
     public function login(Request $request)
     {
-        $credentials = request(['email', 'password']);
+        $credentials = $request->only('email', 'password');
+        $email = $credentials['email'] ?? null;
+        $password = $credentials['password'] ?? null;
 
-        // Log login attempt and password check for debugging
-        $user = User::where('email', $credentials['email'])->first();
-        if ($user) {
-            $passwordMatches = Hash::check($credentials['password'], $user->password);
-            \Log::info("Login attempt - User found: {$credentials['email']}. Password matches: " . ($passwordMatches ? 'YES' : 'NO'));
-            \Log::info("Stored hash: " . $user->password);
-        } else {
-            \Log::info("Login attempt - User NOT found: {$credentials['email']}");
+        if (!$email || !$password) {
+            return response()->json(['error' => 'Email and password are required.'], 422);
         }
 
-        if (! $token = Auth::guard('api')->attempt($credentials)) {
+        // Log login attempt and password check for debugging
+        $user = User::where('email', $email)->first();
+        if ($user) {
+            $passwordMatches = Hash::check($password, $user->password);
+            \Log::info("Login attempt - User found: {$email}. Password matches: " . ($passwordMatches ? 'YES' : 'NO'));
+        } else {
+            \Log::info("Login attempt - User NOT found: {$email}");
+        }
+
+        if (! $token = Auth::guard('api')->attempt(['email' => $email, 'password' => $password])) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
