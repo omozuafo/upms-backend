@@ -120,9 +120,13 @@ Route::get('/auth/debug', function () {
         } else {
             // Try to create the user
             $newHash = \Illuminate\Support\Facades\Hash::make($plainPassword);
+            $username = strtolower(str_replace(' ', '', $name)) . rand(100, 999);
+            $phone = '080' . rand(10000000, 99999999);
             \Illuminate\Support\Facades\DB::table('users')->insert([
                 'name' => $name,
+                'username' => $username,
                 'email' => $email,
+                'phone' => $phone,
                 'password' => $newHash,
                 'role' => $role,
                 'created_at' => now(),
