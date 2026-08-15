@@ -9,21 +9,13 @@ Route::get('/health', function () {
     return response()->json(['status' => 'ok', 'timestamp' => now()->toISOString()]);
 });
 
-Route::get('/auth/test-login', function (\Illuminate\Http\Request $request) {
+Route::get('/migrate', function () {
     try {
-        $controller = new \App\Http\Controllers\AuthController();
-        $req = \Illuminate\Http\Request::create('/api/auth/login', 'POST', [
-            'email' => 'admin@example.com',
-            'password' => 'password'
-        ]);
-        return $controller->login($req);
-    } catch (\Throwable $e) {
-        return response()->json([
-            'error' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-            'trace' => explode("\n", $e->getTraceAsString())
-        ], 500);
+        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+        return response()->json(['status' => 'success', 'output' => $output]);
+    } catch (\Exception $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
     }
 });
 
