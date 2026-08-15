@@ -64,6 +64,8 @@ Route::get('/auth/debug', function () {
         'admin@example.com' => ['password' => 'password', 'role' => 'admin', 'name' => 'Admin User'],
         'accounting@upms.com' => ['password' => 'password', 'role' => 'accounting_staff', 'name' => 'Accounting Staff'],
         'maintenance@upms.com' => ['password' => 'password', 'role' => 'maintenance_staff', 'name' => 'Maintenance Staff'],
+        'tenant@example.com' => ['password' => 'password', 'role' => 'tenant', 'name' => 'John Tenant'],
+        'tenant2@example.com' => ['password' => 'password', 'role' => 'tenant', 'name' => 'Sarah Tenant'],
     ];
 
     foreach ($admins as $email => $data) {
