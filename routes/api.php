@@ -9,11 +9,25 @@ Route::get('/health', function () {
     return response()->json(['status' => 'ok', 'timestamp' => now()->toISOString()]);
 });
 
-Route::get('/migrate', function () {
+Route::get('/auth/seed-tenant', function () {
     try {
-        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-        $output = \Illuminate\Support\Facades\Artisan::output();
-        return response()->json(['status' => 'success', 'output' => $output]);
+        $user = \App\Models\User::where('email', 'tenant@example.com')->first();
+        if (!$user) {
+            $user = \App\Models\User::create([
+                'name' => 'John Tenant',
+                'username' => 'johntenant123',
+                'email' => 'tenant@example.com',
+                'phone' => '08012345678',
+                'password' => \Illuminate\Support\Facades\Hash::make('password'),
+                'role' => 'tenant',
+            ]);
+        } else {
+            $user->update([
+                'password' => \Illuminate\Support\Facades\Hash::make('password'),
+                'role' => 'tenant',
+            ]);
+        }
+        return response()->json(['status' => 'success', 'user' => $user->only(['id', 'name', 'email', 'role'])]);
     } catch (\Exception $e) {
         return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
     }
