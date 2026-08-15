@@ -148,26 +148,35 @@ class AuthController extends Controller
 
         $user = Auth::guard('api')->user();
         
-        // Generate Unique Session Key
-        $sessionKey = (string) \Illuminate\Support\Str::uuid();
-        
-        // Create Session Record
-        \App\Models\UserSession::create([
-            'user_id' => $user->id,
-            'session_key' => $sessionKey,
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'expires_at' => now()->addMinutes(auth('api')->factory()->getTTL()),
-            'is_active' => true,
-        ]);
+        try {
+            // Generate Unique Session Key
+            $sessionKey = (string) \Illuminate\Support\Str::uuid();
+            
+            // Create Session Record
+            try {
+                \App\Models\UserSession::create([
+                    'user_id' => $user->id,
+                    'session_key' => $sessionKey,
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                    'expires_at' => now()->addMinutes(config('jwt.ttl', 60)),
+                    'is_active' => true,
+                ]);
+            } catch (\Exception $e) {
+                \Log::warning('UserSession creation failed: ' . $e->getMessage());
+            }
 
-        // Add session_key to user for JWT claim
-        $user->session_key = $sessionKey;
-        
-        // Generate token with custom claims
-        $token = Auth::guard('api')->claims(['session_key' => $sessionKey])->login($user);
+            // Add session_key to user for JWT claim
+            $user->session_key = $sessionKey;
+            
+            // Generate token with custom claims
+            $token = Auth::guard('api')->claims(['session_key' => $sessionKey])->login($user);
 
-        return $this->respondWithToken($token);
+            return $this->respondWithToken($token);
+        } catch (\Exception $e) {
+            \Log::error('Login processing error: ' . $e->getMessage());
+            return response()->json(['error' => 'Login processing error', 'details' => $e->getMessage()], 500);
+        }
     }
 
     /**
