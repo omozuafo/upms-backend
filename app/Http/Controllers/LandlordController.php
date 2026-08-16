@@ -48,6 +48,7 @@ class LandlordController extends Controller
             'password' => 'required|string|min:8',
             'phone' => 'nullable|string|max:20',
             'company_name' => 'nullable|string|max:255',
+            'existing_property_id' => 'nullable|exists:properties,id',
             // Property validation
             'property_name' => 'nullable|string|max:255',
             'property_address' => 'nullable|required_with:property_name|string|max:255',
@@ -74,8 +75,12 @@ class LandlordController extends Controller
             'company_name' => $request->company_name,
         ]);
 
-        // Create Property if provided
-        if ($request->filled('property_name')) {
+        // Associate existing property if provided
+        if ($request->filled('existing_property_id')) {
+            Property::where('id', $request->existing_property_id)->update(['landlord_id' => $landlord->id]);
+        } 
+        // Or Create new Property if property_name is provided
+        else if ($request->filled('property_name')) {
             $imagePaths = [];
             if ($request->hasFile('property_images')) {
                 $images = $request->file('property_images');
