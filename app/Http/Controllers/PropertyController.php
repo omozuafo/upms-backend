@@ -63,18 +63,16 @@ class PropertyController extends Controller
             $propertyData['units_count'] = (int) $request->units_count;
             $propertyData['landlord_id'] = $request->filled('landlord_id') ? $request->landlord_id : null;
             
-            // Handle image uploads
+            // Handle image uploads (Files or Base64 / Strings array)
             $imagePaths = [];
-            if ($request->hasFile('images')) {
+            if ($request->has('images') && is_array($request->images)) {
+                $imagePaths = array_slice($request->images, 0, 4);
+            } else if ($request->hasFile('images')) {
                 $images = $request->file('images');
-                
-                // Limit to 4 images
                 if (count($images) > 4) {
                     return response()->json(['error' => 'Maximum 4 images allowed'], 400);
                 }
-                
                 foreach ($images as $image) {
-                    // Store the image in public/properties folder
                     $path = $image->store('properties', 'public');
                     $imagePaths[] = $path;
                 }
@@ -202,6 +200,10 @@ class PropertyController extends Controller
         $data = $request->only(['name', 'address', 'type', 'status', 'description', 'landlord_id', 'units_count']);
         if (array_key_exists('landlord_id', $data) && ($data['landlord_id'] === "" || $data['landlord_id'] === "null" || $data['landlord_id'] === null)) {
             $data['landlord_id'] = null;
+        }
+
+        if ($request->has('images')) {
+            $data['images'] = is_array($request->images) ? json_encode($request->images) : $request->images;
         }
 
         $property->update($data);
