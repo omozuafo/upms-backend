@@ -75,9 +75,15 @@ class LandlordController extends Controller
             'company_name' => $request->company_name,
         ]);
 
-        // Associate existing property if provided
+        // Associate existing property if provided (Must be currently unassigned)
         if ($request->filled('existing_property_id')) {
-            Property::where('id', $request->existing_property_id)->update(['landlord_id' => $landlord->id]);
+            $existingProperty = Property::where('id', $request->existing_property_id)->first();
+            if ($existingProperty && $existingProperty->landlord_id !== null) {
+                return response()->json(['error' => 'This property is already assigned to another landlord. Assigned properties can only be reassigned by editing the property directly.'], 422);
+            }
+            if ($existingProperty) {
+                $existingProperty->update(['landlord_id' => $landlord->id]);
+            }
         } 
         // Or Create new Property if property_name is provided
         else if ($request->filled('property_name')) {
