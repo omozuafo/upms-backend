@@ -13,7 +13,7 @@ class ExpenseController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Expense::with(['property', 'creator']);
+        $query = Expense::with(['property', 'unit.tenant:id,name,email', 'creator']);
 
         if ($request->has('property_id') && $request->property_id !== 'All') {
             $query->where('property_id', $request->property_id);
@@ -34,6 +34,7 @@ class ExpenseController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'property_id' => 'nullable|exists:properties,id',
+            'unit_id' => 'nullable|exists:units,id',
             'amount' => 'required|numeric|min:0',
             'purpose' => 'nullable|string|max:255',
             'receipt_number' => 'nullable|string|max:255',
@@ -53,6 +54,9 @@ class ExpenseController extends Controller
         if (array_key_exists('property_id', $data) && ($data['property_id'] === '' || $data['property_id'] === 'none' || $data['property_id'] === 'null' || $data['property_id'] === null)) {
             $data['property_id'] = null;
         }
+        if (array_key_exists('unit_id', $data) && ($data['unit_id'] === '' || $data['unit_id'] === 'none' || $data['unit_id'] === 'null' || $data['unit_id'] === null)) {
+            $data['unit_id'] = null;
+        }
         $data['created_by'] = Auth::id() ?? auth('api')->id();
         $data['status'] = $data['status'] ?? 'Pending';
         if (empty($data['category'])) {
@@ -60,7 +64,7 @@ class ExpenseController extends Controller
         }
 
         $expense = Expense::create($data);
-        $expense->load(['property', 'creator']);
+        $expense->load(['property', 'unit.tenant:id,name,email', 'creator']);
 
         // Notify Admins about new expense submission
         $admins = User::whereIn('role', ['admin', 'super_admin'])->get();
@@ -98,9 +102,12 @@ class ExpenseController extends Controller
         if (array_key_exists('property_id', $data) && ($data['property_id'] === '' || $data['property_id'] === 'none' || $data['property_id'] === 'null' || $data['property_id'] === null)) {
             $data['property_id'] = null;
         }
+        if (array_key_exists('unit_id', $data) && ($data['unit_id'] === '' || $data['unit_id'] === 'none' || $data['unit_id'] === 'null' || $data['unit_id'] === null)) {
+            $data['unit_id'] = null;
+        }
 
         $expense->update($data);
-        $expense->load(['property', 'creator']);
+        $expense->load(['property', 'unit.tenant:id,name,email', 'creator']);
         return response()->json($expense);
     }
 

@@ -15,6 +15,7 @@ class Expense extends Model
 
     protected $fillable = [
         'property_id',
+        'unit_id',
         'category',
         'purpose',
         'amount',
@@ -39,6 +40,11 @@ class Expense extends Model
     public function property()
     {
         return $this->belongsTo(Property::class);
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(Unit::class);
     }
 
     public function creator()
