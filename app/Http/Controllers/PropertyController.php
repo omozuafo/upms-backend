@@ -42,7 +42,7 @@ class PropertyController extends Controller
             'type' => 'required|string',
             'status' => 'required|string',
             'units_count' => 'required|integer|min:0',
-            'landlord_id' => 'required|string|exists:users,id', // Ensure user exists
+            'landlord_id' => 'nullable|exists:users,id', // Optional landlord
             'images.*' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120', // 5MB max per image
         ]);
 
@@ -61,7 +61,7 @@ class PropertyController extends Controller
             $propertyData = $request->only(['name', 'address', 'type', 'status', 'description']);
             // Explicitly cast units_count
             $propertyData['units_count'] = (int) $request->units_count;
-            $propertyData['landlord_id'] = $request->landlord_id;
+            $propertyData['landlord_id'] = $request->filled('landlord_id') ? $request->landlord_id : null;
             
             // Handle image uploads
             $imagePaths = [];
@@ -189,13 +189,26 @@ class PropertyController extends Controller
 
     public function update(Request $request, $id)
     {
+        $user = auth()->user();
+        if (!in_array($user->role, ['super_admin', 'admin', 'property_officer'])) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
         $property = Property::find($id);
         if (!$property) {
             return response()->json(['message' => 'Property not found'], 404);
         }
 
-        $property->update($request->all());
-        return response()->json($property);
+        $data = $request->only(['name', 'address', 'type', 'status', 'description', 'landlord_id', 'units_count']);
+        if (array_key_exists('landlord_id', $data) && ($data['landlord_id'] === "" || $data['landlord_id'] === "null" || $data['landlord_id'] === null)) {
+            $data['landlord_id'] = null;
+        }
+
+        $property->update($data);
+        return response()->json([
+            'message' => 'Property updated successfully',
+            'property' => $property->load('landlord')
+        ]);
     }
 
     public function destroy($id)
