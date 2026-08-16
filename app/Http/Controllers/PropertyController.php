@@ -65,17 +65,17 @@ class PropertyController extends Controller
             
             // Handle image uploads (Files or Base64 / Strings array)
             $imagePaths = [];
-            if ($request->has('images') && is_array($request->images)) {
-                $imagePaths = array_slice($request->images, 0, 4);
-            } else if ($request->hasFile('images')) {
+            if ($request->hasFile('images')) {
                 $images = $request->file('images');
                 if (count($images) > 4) {
                     return response()->json(['error' => 'Maximum 4 images allowed'], 400);
                 }
                 foreach ($images as $image) {
-                    $path = $image->store('properties', 'public');
-                    $imagePaths[] = $path;
+                    $base64 = 'data:' . $image->getMimeType() . ';base64,' . base64_encode(file_get_contents($image->getRealPath()));
+                    $imagePaths[] = $base64;
                 }
+            } else if ($request->has('images') && is_array($request->images)) {
+                $imagePaths = array_slice($request->images, 0, 4);
             }
             
             $propertyData['images'] = json_encode($imagePaths);
@@ -202,7 +202,15 @@ class PropertyController extends Controller
             $data['landlord_id'] = null;
         }
 
-        if ($request->has('images')) {
+        if ($request->hasFile('images')) {
+            $images = $request->file('images');
+            $imagePaths = [];
+            foreach ($images as $image) {
+                $base64 = 'data:' . $image->getMimeType() . ';base64,' . base64_encode(file_get_contents($image->getRealPath()));
+                $imagePaths[] = $base64;
+            }
+            $data['images'] = json_encode($imagePaths);
+        } else if ($request->has('images')) {
             $data['images'] = is_array($request->images) ? json_encode($request->images) : $request->images;
         }
 
