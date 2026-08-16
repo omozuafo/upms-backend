@@ -9,16 +9,7 @@ Route::get('/health', function () {
     return response()->json(['status' => 'ok', 'timestamp' => now()->toISOString()]);
 });
 
-Route::get('/migrate', function () {
-    try {
-        \Illuminate\Support\Facades\DB::statement('ALTER TABLE properties ALTER COLUMN landlord_id DROP NOT NULL;');
-        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-        $output = \Illuminate\Support\Facades\Artisan::output();
-        return response()->json(['status' => 'success', 'message' => 'landlord_id column is now nullable in PostgreSQL DB', 'output' => $output]);
-    } catch (\Exception $e) {
-        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
-    }
-});
+
 
 
 
