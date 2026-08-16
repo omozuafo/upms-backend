@@ -33,7 +33,7 @@ class ExpenseController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'property_id' => 'required|exists:properties,id',
+            'property_id' => 'nullable|exists:properties,id',
             'amount' => 'required|numeric|min:0',
             'purpose' => 'nullable|string|max:255',
             'receipt_number' => 'nullable|string|max:255',
@@ -50,6 +50,9 @@ class ExpenseController extends Controller
         }
 
         $data = $request->all();
+        if (array_key_exists('property_id', $data) && ($data['property_id'] === '' || $data['property_id'] === 'none' || $data['property_id'] === 'null' || $data['property_id'] === null)) {
+            $data['property_id'] = null;
+        }
         $data['created_by'] = Auth::id() ?? auth('api')->id();
         $data['status'] = $data['status'] ?? 'Pending';
         if (empty($data['category'])) {
@@ -91,7 +94,12 @@ class ExpenseController extends Controller
             return response()->json(['message' => 'Expense not found'], 404);
         }
 
-        $expense->update($request->all());
+        $data = $request->all();
+        if (array_key_exists('property_id', $data) && ($data['property_id'] === '' || $data['property_id'] === 'none' || $data['property_id'] === 'null' || $data['property_id'] === null)) {
+            $data['property_id'] = null;
+        }
+
+        $expense->update($data);
         $expense->load(['property', 'creator']);
         return response()->json($expense);
     }
