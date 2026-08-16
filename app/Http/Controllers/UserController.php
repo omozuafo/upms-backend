@@ -29,9 +29,13 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
-        // Check if user is super admin
-        if (!in_array(Auth::user()->role, ['super_admin', 'admin'])) {
+        $currentUser = Auth::user();
+        if (!in_array($currentUser->role, ['super_admin', 'admin'])) {
             return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        if ($request->role === 'super_admin' && $currentUser->role !== 'super_admin') {
+            return response()->json(['error' => 'Only Super Admin can create a Super Admin account.'], 403);
         }
 
         $validator = Validator::make($request->all(), [
@@ -63,7 +67,6 @@ class UserController extends Controller
      */
     public function show($id)
     {
-        // Check if user is super admin
         if (!in_array(Auth::user()->role, ['super_admin', 'admin'])) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -82,8 +85,8 @@ class UserController extends Controller
      */
     public function update(Request $request, $id)
     {
-        // Check if user is super admin
-        if (!in_array(Auth::user()->role, ['super_admin', 'admin'])) {
+        $currentUser = Auth::user();
+        if (!in_array($currentUser->role, ['super_admin', 'admin'])) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
@@ -91,6 +94,16 @@ class UserController extends Controller
 
         if (!$user) {
             return response()->json(['error' => 'User not found'], 404);
+        }
+
+        // Only Super Admin can modify a Super Admin account
+        if ($user->role === 'super_admin' && $currentUser->role !== 'super_admin') {
+            return response()->json(['error' => 'Only Super Admin can modify a Super Admin account.'], 403);
+        }
+
+        // Only Super Admin can grant Super Admin role
+        if ($request->has('role') && $request->role === 'super_admin' && $currentUser->role !== 'super_admin') {
+            return response()->json(['error' => 'Only Super Admin can grant the Super Admin role.'], 403);
         }
 
         $validator = Validator::make($request->all(), [
@@ -133,8 +146,8 @@ class UserController extends Controller
      */
     public function destroy($id)
     {
-        // Check if user is super admin
-        if (!in_array(Auth::user()->role, ['super_admin', 'admin'])) {
+        $currentUser = Auth::user();
+        if (!in_array($currentUser->role, ['super_admin', 'admin'])) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
@@ -145,8 +158,13 @@ class UserController extends Controller
         }
 
         // Prevent deleting self
-        if ($user->id === Auth::id()) {
+        if ($user->id === $currentUser->id) {
             return response()->json(['error' => 'Cannot delete your own account'], 400);
+        }
+
+        // Only Super Admin has rights to delete a Super Admin account
+        if ($user->role === 'super_admin' && $currentUser->role !== 'super_admin') {
+            return response()->json(['error' => 'Only Super Admin can delete a Super Admin account.'], 403);
         }
 
         $user->delete();
