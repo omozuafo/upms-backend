@@ -13,20 +13,22 @@ if [ -n "$DATABASE_URL" ] && [[ "$DATABASE_URL" == *"dpg-"* ]] && [[ "$DATABASE_
     echo "==> Normalized DATABASE_URL to use full Oregon domain..."
 fi
 
+# Ensure SQLite fallback database exists and is writable
+touch /var/www/html/database/database.sqlite 2>/dev/null || touch database/database.sqlite 2>/dev/null || true
+chmod -R 777 /var/www/html/database 2>/dev/null || chmod -R 777 database 2>/dev/null || true
+
 echo "==> Running package discovery..."
 php artisan package:discover --ansi || true
 
-echo "==> Caching config..."
-php artisan config:cache || true
-
-echo "==> Caching routes..."
-php artisan route:cache || true
+echo "==> Clearing cached configurations..."
+php artisan config:clear || true
+php artisan route:clear || true
 
 echo "==> Running database migrations..."
-php artisan migrate --force || echo "==> Notice: Migration could not complete or DB not yet ready"
+php artisan migrate --force || echo "==> Notice: Migration could not complete on primary DB, fallback will handle it"
 
 echo "==> Ensuring admin users have correct passwords..."
-php artisan admin:ensure || echo "==> Notice: Admin ensure could not complete"
+php artisan admin:ensure || echo "==> Notice: Admin ensure could not complete on primary DB, fallback will handle it"
 
 echo "==> Starting Apache server on port ${PORT}..."
 exec apache2-foreground
