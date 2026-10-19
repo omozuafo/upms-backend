@@ -6,6 +6,13 @@ PORT="${PORT:-80}"
 echo "==> Configuring Apache to listen on port ${PORT}..."
 sed -i "s/80/${PORT}/g" /etc/apache2/sites-available/000-default.conf /etc/apache2/ports.conf || true
 
+# Normalize Render's internal PostgreSQL database URL with full Oregon domain if needed
+if [ -n "$DATABASE_URL" ] && [[ "$DATABASE_URL" == *"dpg-"* ]] && [[ "$DATABASE_URL" != *".render.com"* ]]; then
+    DATABASE_URL=$(php -r '$u = getenv("DATABASE_URL"); $p = parse_url($u); if (!empty($p["host"]) && !str_contains($p["host"], ".")) { $u = str_replace($p["host"], $p["host"] . ".oregon-postgres.render.com", $u); } echo $u;')
+    export DATABASE_URL
+    echo "==> Normalized DATABASE_URL to use full Oregon domain..."
+fi
+
 echo "==> Running package discovery..."
 php artisan package:discover --ansi || true
 

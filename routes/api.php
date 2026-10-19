@@ -17,6 +17,14 @@ Route::get('/debug-db', function () {
         $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
         
         $hasUsersTable = \Illuminate\Support\Facades\Schema::hasTable('users');
+        $migrated = false;
+        if (!$hasUsersTable || request()->query('migrate') === 'true') {
+            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+            \Illuminate\Support\Facades\Artisan::call('admin:ensure');
+            $hasUsersTable = \Illuminate\Support\Facades\Schema::hasTable('users');
+            $migrated = true;
+        }
+
         $userCount = $hasUsersTable ? \Illuminate\Support\Facades\DB::table('users')->count() : 0;
         $superAdmin = $hasUsersTable ? \Illuminate\Support\Facades\DB::table('users')->where('email', 'figuriad@gmail.com')->first() : null;
 
@@ -25,6 +33,7 @@ Route::get('/debug-db', function () {
             'driver' => $driver,
             'database' => $dbName,
             'has_users_table' => $hasUsersTable,
+            'migrated' => $migrated,
             'user_count' => $userCount,
             'super_admin_exists' => (bool) $superAdmin,
         ]);

@@ -84,7 +84,16 @@ return [
 
         'pgsql' => [
             'driver' => 'pgsql',
-            'url' => env('DATABASE_URL', env('DB_URL')),
+            'url' => (function () {
+                $url = env('DATABASE_URL', env('DB_URL'));
+                if ($url && str_contains($url, 'dpg-') && !str_contains($url, '.render.com')) {
+                    $parsed = parse_url($url);
+                    if (!empty($parsed['host']) && !str_contains($parsed['host'], '.')) {
+                        $url = str_replace($parsed['host'], $parsed['host'] . '.oregon-postgres.render.com', $url);
+                    }
+                }
+                return $url;
+            })(),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE', 'laravel'),
@@ -94,10 +103,10 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => env('DB_SSLMODE', env('DATABASE_URL') ? 'require' : 'prefer'),
+            'sslmode' => env('DB_SSLMODE', 'require'),
             'options' => array_filter([
                 \PDO::ATTR_PERSISTENT => env('DB_PERSISTENT', false) ? true : null,
-                \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 5),
+                \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
             ]),
         ],
 
