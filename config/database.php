@@ -16,7 +16,7 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => env('FORCE_PGSQL', false) ? 'pgsql' : 'sqlite',
 
     /*
     |--------------------------------------------------------------------------

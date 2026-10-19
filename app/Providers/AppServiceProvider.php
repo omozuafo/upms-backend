@@ -29,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Config::set('database.default', 'sqlite');
                 \Illuminate\Support\Facades\DB::purge('pgsql');
+                \Illuminate\Support\Facades\DB::setDefaultConnection('sqlite');
 
                 $sqlitePath = database_path('database.sqlite');
                 if (!file_exists($sqlitePath)) {
