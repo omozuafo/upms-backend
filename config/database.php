@@ -94,7 +94,7 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'sslmode' => env('DB_SSLMODE', env('DATABASE_URL') ? 'require' : 'prefer'),
             'options' => array_filter([
                 \PDO::ATTR_PERSISTENT => env('DB_PERSISTENT', false) ? true : null,
                 \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 5),

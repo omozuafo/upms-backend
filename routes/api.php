@@ -9,6 +9,35 @@ Route::get('/health', function () {
     return response()->json(['status' => 'ok', 'timestamp' => now()->toISOString()]);
 });
 
+// Diagnostic DB check endpoint
+Route::get('/debug-db', function () {
+    try {
+        $pdo = \Illuminate\Support\Facades\DB::connection()->getPdo();
+        $dbName = \Illuminate\Support\Facades\DB::connection()->getDatabaseName();
+        $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
+        
+        $hasUsersTable = \Illuminate\Support\Facades\Schema::hasTable('users');
+        $userCount = $hasUsersTable ? \Illuminate\Support\Facades\DB::table('users')->count() : 0;
+        $superAdmin = $hasUsersTable ? \Illuminate\Support\Facades\DB::table('users')->where('email', 'figuriad@gmail.com')->first() : null;
+
+        return response()->json([
+            'status' => 'connected',
+            'driver' => $driver,
+            'database' => $dbName,
+            'has_users_table' => $hasUsersTable,
+            'user_count' => $userCount,
+            'super_admin_exists' => (bool) $superAdmin,
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'status' => 'error',
+            'driver' => config('database.default'),
+            'error_class' => get_class($e),
+            'message' => $e->getMessage(),
+        ], 500);
+    }
+});
+
 Route::group([
     'middleware' => ['api'],
     'prefix' => 'auth'
