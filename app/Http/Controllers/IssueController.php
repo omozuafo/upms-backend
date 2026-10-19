@@ -6,6 +6,8 @@ use App\Models\Issue;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use App\Services\NotificationService;
 
 class IssueController extends Controller
 {
@@ -35,6 +37,11 @@ class IssueController extends Controller
 
         if ($request->has('priority')) {
             $query->where('priority', $request->priority);
+        }
+
+        if ($request->has('page') || $request->has('per_page')) {
+            $perPage = (int) $request->get('per_page', 15);
+            return response()->json($query->orderBy('reported_at', 'desc')->paginate($perPage));
         }
 
         return response()->json($query->orderBy('reported_at', 'desc')->get());
@@ -79,40 +86,33 @@ class IssueController extends Controller
 
         $issue = Issue::create($data);
 
-        // Create notification for tenant
-        \App\Models\Notification::create([
-            'user_id' => Auth::id(),
+        // Notify tenant
+        NotificationService::send(Auth::id(), [
             'type' => 'maintenance_update',
             'title' => 'Maintenance Request Received',
             'message' => "Your maintenance request '{$issue->title}' has been received and is being reviewed.",
-            'data' => ['issue_id' => $issue->id, 'status' => 'Open'],
+            'reference_id' => $issue->id,
         ]);
 
         // Notify all maintenance staff
-        $maintenanceStaffs = \App\Models\User::where('role', 'maintenance_staff')->get();
-        foreach ($maintenanceStaffs as $staff) {
-            \App\Models\Notification::create([
-                'user_id' => $staff->id,
-                'type' => 'maintenance_update',
-                'title' => 'New Maintenance Request',
-                'message' => "A new maintenance request '{$issue->title}' has been submitted.",
-                'data' => ['issue_id' => $issue->id, 'status' => 'Open'],
-            ]);
-        }
+        $maintenanceIds = \App\Models\User::where('role', 'maintenance_staff')->pluck('id')->toArray();
+        NotificationService::send($maintenanceIds, [
+            'type' => 'maintenance_update',
+            'title' => 'New Maintenance Request',
+            'message' => "A new maintenance request '{$issue->title}' has been submitted.",
+            'reference_id' => $issue->id,
+        ]);
 
         // Notify accounting staff if budget is instantly submitted
         if (isset($data['budget_cost'])) {
             $accountRoles = ['accounting_staff', 'admin', 'super_admin'];
-            $accountStaffs = \App\Models\User::whereIn('role', $accountRoles)->get();
-            foreach ($accountStaffs as $staff) {
-                \App\Models\Notification::create([
-                    'user_id' => $staff->id,
-                    'type' => 'budget_review',
-                    'title' => 'Pending Budget Review',
-                    'message' => "A maintenance budget of ₦" . number_format((float)$issue->budget_cost, 2) . " has been submitted for '{$issue->title}'.",
-                    'data' => ['issue_id' => $issue->id, 'status' => 'Pending'],
-                ]);
-            }
+            $accountIds = \App\Models\User::whereIn('role', $accountRoles)->pluck('id')->toArray();
+            NotificationService::send($accountIds, [
+                'type' => 'budget_review',
+                'title' => 'Pending Budget Review',
+                'message' => "A maintenance budget of ₦" . number_format((float)$issue->budget_cost, 2) . " has been submitted for '{$issue->title}'.",
+                'reference_id' => $issue->id,
+            ]);
         }
 
         return response()->json($issue, 201);
@@ -218,25 +218,21 @@ class IssueController extends Controller
 
         // Notify accounting staff
         $accountRoles = ['accounting_staff', 'admin', 'super_admin'];
-        $accountStaffs = \App\Models\User::whereIn('role', $accountRoles)->get();
-        foreach ($accountStaffs as $staff) {
-            \App\Models\Notification::create([
-                'user_id' => $staff->id,
-                'type' => 'budget_review',
-                'title' => 'Pending Budget Review',
-                'message' => "A maintenance budget of ₦" . number_format((float)$issue->budget_cost, 2) . " has been submitted for '{$issue->title}'.",
-                'data' => ['issue_id' => $issue->id, 'status' => 'Pending'],
-            ]);
-        }
+        $accountIds = \App\Models\User::whereIn('role', $accountRoles)->pluck('id')->toArray();
+        NotificationService::send($accountIds, [
+            'type' => 'budget_review',
+            'title' => 'Pending Budget Review',
+            'message' => "A maintenance budget of ₦" . number_format((float)$issue->budget_cost, 2) . " has been submitted for '{$issue->title}'.",
+            'reference_id' => $issue->id,
+        ]);
 
         // Notify the maintenance staff who submitted the budget
         if (Auth::user() && Auth::user()->role === 'maintenance_staff') {
-            \App\Models\Notification::create([
-                'user_id' => Auth::id(),
+            NotificationService::send(Auth::id(), [
                 'type' => 'maintenance_update',
                 'title' => 'Budget Submitted Successfully',
                 'message' => "Your budget of ₦" . number_format((float)$issue->budget_cost, 2) . " for '{$issue->title}' has been sent to accounting.",
-                'data' => ['issue_id' => $issue->id, 'status' => 'Pending'],
+                'reference_id' => $issue->id,
             ]);
         }
 
@@ -257,12 +253,11 @@ class IssueController extends Controller
 
         // Notify the tenant
         if ($issue->reported_by) {
-            \App\Models\Notification::create([
-                'user_id' => $issue->reported_by,
+            NotificationService::send($issue->reported_by, [
                 'type' => 'maintenance_update',
                 'title' => 'Maintenance Request Rejected',
                 'message' => "Your maintenance request '{$issue->title}' has been rejected and closed.",
-                'data' => ['issue_id' => $issue->id, 'status' => 'Closed'],
+                'reference_id' => $issue->id,
             ]);
         }
 
@@ -281,51 +276,54 @@ class IssueController extends Controller
         $issue = Issue::find($id);
         if (!$issue) return response()->json(['message' => 'Issue not found'], 404);
 
-        if ($request->action === 'Accept') {
-            $issue->account_review_status = 'Accepted';
-            $issue->status = 'In Progress';
+        DB::transaction(function () use ($request, $issue) {
+            if ($request->action === 'Accept') {
+                $issue->account_review_status = 'Accepted';
+                $issue->status = 'In Progress';
 
-            if (!empty($issue->tenant_budget_split) && is_array($issue->tenant_budget_split)) {
-                // Handle split charges
-                foreach ($issue->tenant_budget_split as $split) {
-                    $tenant = \App\Models\User::find($split['tenant_id']);
-                    if ($tenant && $split['amount'] > 0) {
-                        $tenant->wallet_balance -= $split['amount'];
+                if (!empty($issue->tenant_budget_split) && is_array($issue->tenant_budget_split)) {
+                    // Handle split charges
+                    foreach ($issue->tenant_budget_split as $split) {
+                        $tenant = \App\Models\User::lockForUpdate()->find($split['tenant_id']);
+                        if ($tenant && $split['amount'] > 0) {
+                            $tenant->wallet_balance -= $split['amount'];
+                            $tenant->save();
+
+                            \App\Models\WalletTransaction::create([
+                                'user_id' => $tenant->id,
+                                'amount' => $split['amount'],
+                                'type' => 'debit',
+                                'description' => "Maintenance Cost Deducted (Split): {$issue->title}",
+                                'admin_id' => Auth::id(),
+                            ]);
+                        }
+                    }
+                } else {
+                    // Fallback to single tenant / reporter logic
+                    $tenantId = ($issue->unit && $issue->unit->tenant_id) ? $issue->unit->tenant_id : $issue->reported_by;
+                    $tenant = $tenantId ? \App\Models\User::lockForUpdate()->find($tenantId) : null;
+                    if ($tenant) {
+                        $tenant->wallet_balance -= $issue->budget_cost;
                         $tenant->save();
 
                         \App\Models\WalletTransaction::create([
                             'user_id' => $tenant->id,
-                            'amount' => $split['amount'],
+                            'amount' => $issue->budget_cost,
                             'type' => 'debit',
-                            'description' => "Maintenance Cost Deducted (Split): {$issue->title}",
+                            'description' => "Maintenance Cost Deducted: {$issue->title}",
                             'admin_id' => Auth::id(),
                         ]);
                     }
                 }
-            } else {
-                // Fallback to single tenant / reporter logic
-                $tenant = ($issue->unit && $issue->unit->tenant_id) ? \App\Models\User::find($issue->unit->tenant_id) : \App\Models\User::find($issue->reported_by);
-                if ($tenant) {
-                    $tenant->wallet_balance -= $issue->budget_cost;
-                    $tenant->save();
-
-                    \App\Models\WalletTransaction::create([
-                        'user_id' => $tenant->id,
-                        'amount' => $issue->budget_cost,
-                        'type' => 'debit',
-                        'description' => "Maintenance Cost Deducted: {$issue->title}",
-                        'admin_id' => Auth::id(),
-                    ]);
-                }
+            } elseif ($request->action === 'Reject') {
+                $issue->account_review_status = 'Rejected';
+                $issue->status = 'Closed';
+            } elseif ($request->action === 'Dispute') {
+                $issue->account_review_status = 'Disputed';
             }
-        } elseif ($request->action === 'Reject') {
-            $issue->account_review_status = 'Rejected';
-            $issue->status = 'Closed';
-        } elseif ($request->action === 'Dispute') {
-            $issue->account_review_status = 'Disputed';
-        }
 
-        $issue->save();
+            $issue->save();
+        });
         $issue->load(['property', 'unit.tenant', 'reporter', 'assignee']);
         return response()->json($issue);
     }

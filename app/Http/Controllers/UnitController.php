@@ -14,11 +14,15 @@ class UnitController extends Controller
         $query = Unit::with(['property', 'tenant']);
 
         if ($request->has('property_id')) {
-            $units = $query->where('property_id', $request->property_id)->get();
-        } else {
-            $units = $query->get();
+            $query->where('property_id', $request->property_id);
         }
-        return response()->json($units);
+
+        if ($request->has('page') || $request->has('per_page')) {
+            $perPage = (int) $request->get('per_page', 15);
+            return response()->json($query->paginate($perPage));
+        }
+
+        return response()->json($query->get());
     }
 
     public function store(Request $request)

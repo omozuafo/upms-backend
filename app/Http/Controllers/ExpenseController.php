@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Expense;
 use App\Models\Notification;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
@@ -67,17 +68,13 @@ class ExpenseController extends Controller
         $expense->load(['property', 'unit.tenant:id,name,email', 'creator']);
 
         // Notify Admins about new expense submission
-        $admins = User::whereIn('role', ['admin', 'super_admin'])->get();
-        foreach ($admins as $admin) {
-            Notification::create([
-                'user_id' => $admin->id,
-                'type' => 'expense',
-                'title' => 'New Expense Submission',
-                'message' => 'New expense claim (' . ($expense->receipt_number ? '#' . $expense->receipt_number : '₦' . number_format($expense->amount)) . ') submitted for review.',
-                'read' => false,
-                'reference_id' => $expense->id,
-            ]);
-        }
+        $adminIds = User::whereIn('role', ['admin', 'super_admin'])->pluck('id')->toArray();
+        NotificationService::send($adminIds, [
+            'type' => 'expense',
+            'title' => 'New Expense Submission',
+            'message' => 'New expense claim (' . ($expense->receipt_number ? '#' . $expense->receipt_number : '₦' . number_format($expense->amount)) . ') submitted for review.',
+            'reference_id' => $expense->id,
+        ]);
 
         return response()->json($expense, 201);
     }
@@ -134,24 +131,13 @@ class ExpenseController extends Controller
             'rejection_reason' => null
         ]);
 
-        // Notify accounting staff who submitted it
-        $targetUserIds = [];
-        if ($expense->created_by) {
-            $targetUserIds[] = $expense->created_by;
-        } else {
-            $targetUserIds = User::where('role', 'accounting_staff')->pluck('id')->toArray();
-        }
-
-        foreach (array_unique($targetUserIds) as $userId) {
-            Notification::create([
-                'user_id' => $userId,
-                'type' => 'expense',
-                'title' => 'Expense Approved',
-                'message' => 'Your expense claim (' . ($expense->receipt_number ? '#' . $expense->receipt_number : '₦' . number_format($expense->amount)) . ') for ' . ($expense->purpose ?? $expense->category) . ' has been APPROVED by admin.',
-                'read' => false,
-                'reference_id' => $expense->id,
-            ]);
-        }
+        $targetUserIds = $expense->created_by ? [$expense->created_by] : User::where('role', 'accounting_staff')->pluck('id')->toArray();
+        NotificationService::send($targetUserIds, [
+            'type' => 'expense',
+            'title' => 'Expense Approved',
+            'message' => 'Your expense claim (' . ($expense->receipt_number ? '#' . $expense->receipt_number : '₦' . number_format($expense->amount)) . ') for ' . ($expense->purpose ?? $expense->category) . ' has been APPROVED by admin.',
+            'reference_id' => $expense->id,
+        ]);
 
         return response()->json([
             'message' => 'Expense approved successfully',
@@ -179,24 +165,13 @@ class ExpenseController extends Controller
             'rejection_reason' => $request->rejection_reason,
         ]);
 
-        // Notify accounting staff with reason
-        $targetUserIds = [];
-        if ($expense->created_by) {
-            $targetUserIds[] = $expense->created_by;
-        } else {
-            $targetUserIds = User::where('role', 'accounting_staff')->pluck('id')->toArray();
-        }
-
-        foreach (array_unique($targetUserIds) as $userId) {
-            Notification::create([
-                'user_id' => $userId,
-                'type' => 'expense',
-                'title' => 'Expense Rejected',
-                'message' => 'Your expense claim (' . ($expense->receipt_number ? '#' . $expense->receipt_number : '₦' . number_format($expense->amount)) . ') was REJECTED. Reason: ' . $request->rejection_reason,
-                'read' => false,
-                'reference_id' => $expense->id,
-            ]);
-        }
+        $targetUserIds = $expense->created_by ? [$expense->created_by] : User::where('role', 'accounting_staff')->pluck('id')->toArray();
+        NotificationService::send($targetUserIds, [
+            'type' => 'expense',
+            'title' => 'Expense Rejected',
+            'message' => 'Your expense claim (' . ($expense->receipt_number ? '#' . $expense->receipt_number : '₦' . number_format($expense->amount)) . ') was REJECTED. Reason: ' . $request->rejection_reason,
+            'reference_id' => $expense->id,
+        ]);
 
         return response()->json([
             'message' => 'Expense rejected',

@@ -6,6 +6,7 @@ use App\Models\Property;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use App\Services\ImageService;
 
 class PropertyController extends Controller
 {
@@ -63,21 +64,8 @@ class PropertyController extends Controller
             $propertyData['units_count'] = (int) $request->units_count;
             $propertyData['landlord_id'] = $request->filled('landlord_id') ? $request->landlord_id : null;
             
-            // Handle image uploads (Files or Base64 / Strings array)
-            $imagePaths = [];
-            if ($request->hasFile('images')) {
-                $images = $request->file('images');
-                if (count($images) > 4) {
-                    return response()->json(['error' => 'Maximum 4 images allowed'], 400);
-                }
-                foreach ($images as $image) {
-                    $base64 = 'data:' . $image->getMimeType() . ';base64,' . base64_encode(file_get_contents($image->getRealPath()));
-                    $imagePaths[] = $base64;
-                }
-            } else if ($request->has('images') && is_array($request->images)) {
-                $imagePaths = array_slice($request->images, 0, 4);
-            }
-            
+            // Handle image uploads via shared ImageService
+            $imagePaths = ImageService::processImages($request, 4);
             $propertyData['images'] = json_encode($imagePaths);
             
             $property = Property::create($propertyData);
@@ -143,26 +131,37 @@ class PropertyController extends Controller
         // Get unique tenants (some might have multiple units)
         // Get unique tenants with their lease expiration
         $propertyId = $id;
-        $tenants = $property->units()
+        $unitsWithTenants = $property->units()
             ->with(['tenant:id,name,email,phone', 'activeLease:id,unit_id,end_date'])
             ->whereHas('tenant')
-            ->get()
-            ->map(function($unit) use ($propertyId) {
+            ->get();
+
+        $tenantIds = $unitsWithTenants->pluck('tenant.id')->filter()->unique()->toArray();
+
+        // Batch aggregate payment stats to fix N+1 queries
+        $paymentAggregates = [];
+        if (!empty($tenantIds)) {
+            $paymentRows = \App\Models\Payment::whereIn('tenant_id', $tenantIds)
+                ->where('property_id', $propertyId)
+                ->whereIn('status', ['Paid', 'Pending'])
+                ->selectRaw('tenant_id, status, SUM(amount) as total')
+                ->groupBy('tenant_id', 'status')
+                ->get();
+
+            foreach ($paymentRows as $row) {
+                $paymentAggregates[$row->tenant_id][$row->status] = (float) $row->total;
+            }
+        }
+
+        $tenants = $unitsWithTenants
+            ->map(function($unit) use ($paymentAggregates) {
                 $tenant = $unit->tenant;
-                // Attach rent expiration if active lease exists
                 if ($unit->activeLease) {
                     $tenant->rent_expiration = $unit->activeLease->end_date->format('Y-m-d');
                 }
 
-                $paid = \App\Models\Payment::where('tenant_id', $tenant->id)
-                    ->where('property_id', $propertyId)
-                    ->where('status', 'Paid')
-                    ->sum('amount');
-                    
-                $pending = \App\Models\Payment::where('tenant_id', $tenant->id)
-                    ->where('property_id', $propertyId)
-                    ->where('status', 'Pending')
-                    ->sum('amount');
+                $paid = $paymentAggregates[$tenant->id]['Paid'] ?? 0;
+                $pending = $paymentAggregates[$tenant->id]['Pending'] ?? 0;
                     
                 $tenant->total_paid = $paid;
                 $tenant->outstanding_balance = $pending;
@@ -202,16 +201,9 @@ class PropertyController extends Controller
             $data['landlord_id'] = null;
         }
 
-        if ($request->hasFile('images')) {
-            $images = $request->file('images');
-            $imagePaths = [];
-            foreach ($images as $image) {
-                $base64 = 'data:' . $image->getMimeType() . ';base64,' . base64_encode(file_get_contents($image->getRealPath()));
-                $imagePaths[] = $base64;
-            }
+        $imagePaths = ImageService::processImages($request, 4);
+        if (!empty($imagePaths)) {
             $data['images'] = json_encode($imagePaths);
-        } else if ($request->has('images')) {
-            $data['images'] = is_array($request->images) ? json_encode($request->images) : $request->images;
         }
 
         $property->update($data);

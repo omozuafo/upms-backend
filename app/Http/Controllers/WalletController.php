@@ -43,12 +43,10 @@ class WalletController extends Controller
             ]);
 
             // Notify the tenant
-            \App\Models\Notification::create([
-                'user_id' => $user->id,
+            \App\Services\NotificationService::send($user->id, [
                 'type' => 'wallet_funded',
                 'title' => 'Wallet Funded',
                 'message' => 'Your wallet has been credited with ₦' . number_format($request->amount, 2) . ' by ' . $admin->name,
-                'read' => false,
             ]);
 
             DB::commit();

@@ -12,6 +12,7 @@ use App\Models\Expense;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class DashboardController extends Controller
 {
@@ -44,52 +45,56 @@ class DashboardController extends Controller
     private function accountingStaffStats()
     {
         try {
-            $totalRevenue = Payment::where('status', 'Paid')->sum('amount') ?? 0;
-            $outstandingDebts = Payment::where('status', 'Pending')->sum('amount') ?? 0;
-            $totalExpenses = Expense::sum('amount') ?? 0;
-            $tenantWalletReserves = User::where('role', 'tenant')->sum('wallet_balance') ?? 0;
+            $data = Cache::remember('dashboard_stats_accounting', 30, function () {
+                $totalRevenue = Payment::where('status', 'Paid')->sum('amount') ?? 0;
+                $outstandingDebts = Payment::where('status', 'Pending')->sum('amount') ?? 0;
+                $totalExpenses = Expense::sum('amount') ?? 0;
+                $tenantWalletReserves = User::where('role', 'tenant')->sum('wallet_balance') ?? 0;
 
-            $recentPayments = Payment::with(['tenant', 'property'])
-                ->where('status', 'Paid')
-                ->orderBy('payment_date', 'desc')
-                ->take(5)
-                ->get();
+                $recentPayments = Payment::with(['tenant', 'property'])
+                    ->where('status', 'Paid')
+                    ->orderBy('payment_date', 'desc')
+                    ->take(5)
+                    ->get();
 
-            $pendingPayments = Payment::with(['tenant', 'property'])
-                ->where('status', 'Pending')
-                ->orderBy('created_at', 'desc')
-                ->take(5)
-                ->get();
+                $pendingPayments = Payment::with(['tenant', 'property'])
+                    ->where('status', 'Pending')
+                    ->orderBy('created_at', 'desc')
+                    ->take(5)
+                    ->get();
+                    
+                $currentYear = now()->year;
+                $payments = Payment::where('status', 'Paid')
+                    ->whereYear('payment_date', $currentYear)
+                    ->get();
+                    
+                $months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                $monthlyRevenue = [];
                 
-            $currentYear = now()->year;
-            $payments = Payment::where('status', 'Paid')
-                ->whereYear('payment_date', $currentYear)
-                ->get();
-                
-            $months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            $monthlyRevenue = [];
-            
-            foreach ($months as $index => $monthName) {
-                $monthNum = $index + 1;
-                $revenueForMonth = $payments->filter(function($payment) use ($monthNum) {
-                    return \Carbon\Carbon::parse($payment->payment_date)->month === $monthNum;
-                })->sum('amount');
-                
-                $monthlyRevenue[] = [
-                    'name' => $monthName,
-                    'revenue' => (float)$revenueForMonth
+                foreach ($months as $index => $monthName) {
+                    $monthNum = $index + 1;
+                    $revenueForMonth = $payments->filter(function($payment) use ($monthNum) {
+                        return \Carbon\Carbon::parse($payment->payment_date)->month === $monthNum;
+                    })->sum('amount');
+                    
+                    $monthlyRevenue[] = [
+                        'name' => $monthName,
+                        'revenue' => (float)$revenueForMonth
+                    ];
+                }
+
+                return [
+                    'total_revenue' => $totalRevenue,
+                    'outstanding_debts' => $outstandingDebts,
+                    'total_expenses' => $totalExpenses,
+                    'tenant_wallet_reserves' => $tenantWalletReserves,
+                    'recent_payments' => $recentPayments,
+                    'pending_payments' => $pendingPayments,
+                    'monthly_revenue' => $monthlyRevenue,
                 ];
-            }
+            });
 
-            return response()->json([
-                'total_revenue' => $totalRevenue,
-                'outstanding_debts' => $outstandingDebts,
-                'total_expenses' => $totalExpenses,
-                'tenant_wallet_reserves' => $tenantWalletReserves,
-                'recent_payments' => $recentPayments,
-                'pending_payments' => $pendingPayments,
-                'monthly_revenue' => $monthlyRevenue,
-            ]);
+            return response()->json($data);
         } catch (\Exception $e) {
             return response()->json([
                 'total_revenue' => 0,
@@ -133,51 +138,47 @@ class DashboardController extends Controller
     private function superAdminStats()
     {
         try {
-            // Total properties
-            $totalProperties = Property::count();
-            
-            // Total units
-            $totalUnits = Unit::count();
-            $occupiedUnits = Unit::where('status', 'Occupied')->count();
-            $vacantUnits = Unit::where('status', 'Vacant')->count();
-            $occupancyRate = $totalUnits > 0 ? ($occupiedUnits / $totalUnits) * 100 : 0;
-            
-            // Active tenants (users with role tenant who have active leases)
-            $activeTenants = Lease::where('status', 'Active')
-                ->distinct('tenant_id')
-                ->count('tenant_id');
-            
-            // Active leases
-            $activeLeases = Lease::where('status', 'Active')->count();
-            
-            // Expiring leases (within 30 days)
-            $expiringLeases = Lease::where('status', 'Active')
-                ->whereDate('end_date', '<=', now()->addDays(30))
-                ->whereDate('end_date', '>=', now())
-                ->count();
-            
-            // Revenue calculations
-            $totalRevenue = Payment::where('status', 'Paid')->sum('amount') ?? 0;
-            $activeRent = Lease::where('status', 'Active')->sum('rent_amount') ?? 0;
-            $paidTotal = Payment::where('status', 'Paid')->sum('amount') ?? 0;
-            $outstandingPayments = max(0, $activeRent - $paidTotal);
-            
-            // Pending maintenance
-            $pendingIssues = Issue::whereIn('status', ['Open', 'In Progress'])->count();
-            
-            return response()->json([
-                'total_properties' => $totalProperties,
-                'total_units' => $totalUnits,
-                'occupied_units' => $occupiedUnits,
-                'vacant_units' => $vacantUnits,
-                'occupancy_rate' => round($occupancyRate, 2),
-                'active_tenants' => $activeTenants,
-                'active_leases' => $activeLeases,
-                'expiring_leases' => $expiringLeases,
-                'total_revenue' => $totalRevenue,
-                'outstanding_payments' => $outstandingPayments,
-                'pending_issues' => $pendingIssues,
-            ]);
+            $data = Cache::remember('dashboard_stats_super_admin', 30, function () {
+                $totalProperties = Property::count();
+                $totalUnits = Unit::count();
+                $occupiedUnits = Unit::where('status', 'Occupied')->count();
+                $vacantUnits = Unit::where('status', 'Vacant')->count();
+                $occupancyRate = $totalUnits > 0 ? ($occupiedUnits / $totalUnits) * 100 : 0;
+                
+                $activeTenants = Lease::where('status', 'Active')
+                    ->distinct('tenant_id')
+                    ->count('tenant_id');
+                
+                $activeLeases = Lease::where('status', 'Active')->count();
+                
+                $expiringLeases = Lease::where('status', 'Active')
+                    ->whereDate('end_date', '<=', now()->addDays(30))
+                    ->whereDate('end_date', '>=', now())
+                    ->count();
+                
+                $totalRevenue = Payment::where('status', 'Paid')->sum('amount') ?? 0;
+                $activeRent = Lease::where('status', 'Active')->sum('rent_amount') ?? 0;
+                $paidTotal = Payment::where('status', 'Paid')->sum('amount') ?? 0;
+                $outstandingPayments = max(0, $activeRent - $paidTotal);
+                
+                $pendingIssues = Issue::whereIn('status', ['Open', 'In Progress'])->count();
+
+                return [
+                    'total_properties' => $totalProperties,
+                    'total_units' => $totalUnits,
+                    'occupied_units' => $occupiedUnits,
+                    'vacant_units' => $vacantUnits,
+                    'occupancy_rate' => round($occupancyRate, 2),
+                    'active_tenants' => $activeTenants,
+                    'active_leases' => $activeLeases,
+                    'expiring_leases' => $expiringLeases,
+                    'total_revenue' => $totalRevenue,
+                    'outstanding_payments' => $outstandingPayments,
+                    'pending_issues' => $pendingIssues,
+                ];
+            });
+
+            return response()->json($data);
         } catch (\Exception $e) {
             // Return default values if there's an error
             return response()->json([

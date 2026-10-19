@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Services\NotificationService;
 
 class PaymentController extends Controller
 {
@@ -31,6 +33,11 @@ class PaymentController extends Controller
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
+        }
+
+        if ($request->has('page') || $request->has('per_page')) {
+            $perPage = (int) $request->get('per_page', 20);
+            return response()->json($query->orderBy('payment_date', 'desc')->paginate($perPage));
         }
 
         return response()->json($query->orderBy('payment_date', 'desc')->get());
@@ -79,33 +86,33 @@ class PaymentController extends Controller
             $data['status'] = $request->status ?? 'Paid';
         }
 
-        $payment = Payment::create($data);
+        $payment = DB::transaction(function () use ($data, $request) {
+            $payment = Payment::create($data);
 
-        // Automation: If Created as Paid and is Rent, mark units as Occupied
-        if ($payment->status === 'Paid' && strcasecmp($payment->type, 'Rent') === 0) {
-            $this->updateUnitStatusToOccupied($payment);
-        }
+            // Automation: If Created as Paid and is Rent, mark units as Occupied
+            if ($payment->status === 'Paid' && strcasecmp($payment->type, 'Rent') === 0) {
+                $this->updateUnitStatusToOccupied($payment);
+            }
+
+            return $payment;
+        });
 
         // Notify Admins and Accounting if it's a tenant payment
         if (auth()->user()->role === 'tenant') {
-            $admins = \App\Models\User::whereIn('role', ['super_admin', 'admin', 'accounting_staff'])->get();
-            foreach ($admins as $admin) {
-                \App\Models\Notification::create([
-                    'user_id' => $admin->id,
-                    'type' => 'payment',
-                    'title' => 'New Payment Submitted',
-                    'message' => 'Tenant ' . auth()->user()->name . ' submitted a payment of ₦' . number_format($payment->amount) . ' for ' . $payment->type,
-                    'read' => false,
-                ]);
-            }
+            $adminIds = \App\Models\User::whereIn('role', ['super_admin', 'admin', 'accounting_staff'])->pluck('id')->toArray();
+            NotificationService::send($adminIds, [
+                'type' => 'payment',
+                'title' => 'New Payment Submitted',
+                'message' => 'Tenant ' . auth()->user()->name . ' submitted a payment of ₦' . number_format($payment->amount) . ' for ' . $payment->type,
+                'reference_id' => $payment->id,
+            ]);
 
             // Notify the tenant themselves
-            \App\Models\Notification::create([
-                'user_id' => auth()->id(),
+            NotificationService::send(auth()->id(), [
                 'type' => 'payment_submission',
                 'title' => 'Payment Details Submitted',
                 'message' => 'Your payment of ₦' . number_format($payment->amount) . ' for ' . $payment->type . ' has been seamlessly sent to accounting for final approval.',
-                'read' => false,
+                'reference_id' => $payment->id,
             ]);
 
             // Notify Landlord if payment is linked to a unit
@@ -119,12 +126,11 @@ class PaymentController extends Controller
             }
 
             if ($landlordId) {
-                 \App\Models\Notification::create([
-                    'user_id' => $landlordId,
+                NotificationService::send($landlordId, [
                     'type' => 'payment',
                     'title' => 'Rent Payment Received',
                     'message' => 'Tenant ' . auth()->user()->name . ' paid ₦' . number_format($payment->amount) . ' for ' . $payment->type,
-                    'read' => false,
+                    'reference_id' => $payment->id,
                 ]);
             }
         }
@@ -174,12 +180,11 @@ class PaymentController extends Controller
 
         // Notify Tenant if status changed
         if ($oldStatus !== $newStatus && $payment->tenant_id) {
-            \App\Models\Notification::create([
-                'user_id' => $payment->tenant_id,
+            NotificationService::send($payment->tenant_id, [
                 'type' => 'payment_status',
                 'title' => 'Payment Status Updated',
                 'message' => 'Your payment of ₦' . number_format($payment->amount) . ' for ' . $payment->type . ' has been ' . $newStatus . '.',
-                'read' => false,
+                'reference_id' => $payment->id,
             ]);
         }
 

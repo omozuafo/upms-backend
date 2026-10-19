@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use App\Http\Requests\RegisterRequest;
+use App\Http\Requests\LoginRequest;
 
 class AuthController extends Controller
 {
@@ -23,70 +25,63 @@ class AuthController extends Controller
     }
 
     /**
-     * Register a new user.
+     * Get available roles for user registration.
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function register(Request $request)
+    public function getAvailableRegistrationRoles()
     {
-        // 1. Sanitize inputs
-        $input = $request->all();
-        $sanitized = [];
-        
-        $fieldsToSanitize = ['name', 'email', 'phone', 'password', 'password_confirmation', 'role', 'username'];
-        foreach ($fieldsToSanitize as $field) {
-            if (isset($input[$field])) {
-                $val = trim($input[$field]);
-                if ($field !== 'password' && $field !== 'password_confirmation') {
-                    $val = htmlspecialchars(strip_tags($val));
-                }
-                if ($field === 'email') {
-                    $val = strtolower($val);
-                }
-                $sanitized[$field] = $val;
-            }
+        $adminExists = User::whereIn('role', ['admin', 'super_admin'])->exists();
+        $maintenanceExists = User::whereIn('role', ['maintenance', 'maintenance_staff'])->exists();
+        $accountantExists = User::whereIn('role', ['accountant', 'accounting_staff'])->exists();
+
+        $roles = [];
+        if (!$adminExists) {
+            $roles[] = ['value' => 'admin', 'label' => 'Admin'];
         }
-        $request->replace($sanitized);
-
-        $messages = [
-            'email.email' => 'Please enter a valid email address.',
-            'email.unique' => 'This email is already registered.',
-            'phone.regex' => 'Phone number must be a valid numeric format, 10–15 digits.',
-            'phone.unique' => 'This phone number is already in use.',
-            'username.regex' => 'Username must be alphanumeric only, 3–20 characters, no spaces.',
-            'username.unique' => 'This username is already taken.',
-            'password.min' => 'Password must be at least 8 characters.',
-            'password.regex' => 'Password must contain at least one uppercase letter, one number, and one special character.',
-        ];
-
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users,email',
-            'phone' => ['required', 'string', 'regex:/^\d{10,15}$/', 'unique:users,phone'],
-            'username' => ['required', 'string', 'regex:/^[a-zA-Z0-9]{3,20}$/', 'unique:users,username'],
-            'password' => [
-                'required',
-                'string',
-                'min:8',
-                'regex:/[A-Z]/',
-                'regex:/[0-9]/',
-                'regex:/[^a-zA-Z0-9]/', // Special character
-                'confirmed'
-            ],
-            'role' => 'required|string|in:tenant,landlord',
-        ], $messages);
-
-        if($validator->fails()){
-            return response()->json($validator->errors(), 400); // Send specific field errors back
+        if (!$maintenanceExists) {
+            $roles[] = ['value' => 'maintenance', 'label' => 'Maintenance'];
         }
+        if (!$accountantExists) {
+            $roles[] = ['value' => 'accountant', 'label' => 'Accountant'];
+        }
+        $roles[] = ['value' => 'landlord', 'label' => 'Landlord'];
+        $roles[] = ['value' => 'tenant', 'label' => 'Tenant'];
+
+        return response()->json([
+            'roles' => $roles,
+            'summary' => [
+                'admin_available' => !$adminExists,
+                'maintenance_available' => !$maintenanceExists,
+                'accountant_available' => !$accountantExists,
+            ]
+        ]);
+    }
+
+    /**
+     * Register a new user.
+     *
+     * @param RegisterRequest $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function register(RegisterRequest $request)
+    {
+        $validated = $request->validated();
+
+        $rawRole = $validated['role'];
+        $canonicalRole = match ($rawRole) {
+            'maintenance', 'maintenance_staff' => 'maintenance_staff',
+            'accountant', 'accounting_staff' => 'accounting_staff',
+            default => $rawRole,
+        };
 
         $user = User::create([
-            'name' => $request->get('name'),
-            'username' => $request->get('username'),
-            'email' => $request->get('email'),
-            'phone' => $request->get('phone'),
-            'password' => Hash::make($request->get('password')),
-            'role' => $request->get('role'),
+            'name' => $validated['name'],
+            'username' => $validated['username'],
+            'email' => strtolower($validated['email']),
+            'phone' => $validated['phone'],
+            'password' => Hash::make($validated['password']),
+            'role' => $canonicalRole,
         ]);
 
         $token = Auth::guard('api')->login($user);
@@ -128,15 +123,11 @@ class AuthController extends Controller
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function login(Request $request)
+    public function login(LoginRequest $request)
     {
-        $credentials = $request->only('email', 'password');
-        $email = $credentials['email'] ?? null;
-        $password = $credentials['password'] ?? null;
-
-        if (!$email || !$password) {
-            return response()->json(['error' => 'Email and password are required.'], 422);
-        }
+        $credentials = $request->validated();
+        $email = strtolower($credentials['email']);
+        $password = $credentials['password'];
 
         // Log login attempt and password check for debugging
         $user = User::where('email', $email)->first();

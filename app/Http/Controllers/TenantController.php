@@ -12,15 +12,21 @@ class TenantController extends Controller
     /**
      * Display a listing of tenants.
      */
-    public function index()
+    public function index(Request $request)
     {
         // Restrict access: Tenants cannot view the list of other tenants
         if (auth()->user()->role === 'tenant') {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $tenants = User::where('role', 'tenant')->get();
-        return response()->json($tenants);
+        $query = User::where('role', 'tenant')->orderBy('name', 'asc');
+
+        if ($request->has('page') || $request->has('per_page')) {
+            $perPage = (int) $request->get('per_page', 15);
+            return response()->json($query->paginate($perPage));
+        }
+
+        return response()->json($query->get());
     }
 
     /**
@@ -100,13 +106,16 @@ class TenantController extends Controller
             ->get();
 
         $paymentCategories = ['Rent', 'Service Charge', 'Power/Electricity', 'Diesel', 'Asset Replacement'];
+        $categoryTotals = \App\Models\Payment::where('tenant_id', $id)
+            ->where('status', 'Paid')
+            ->whereIn('type', $paymentCategories)
+            ->groupBy('type')
+            ->selectRaw('type, SUM(amount) as total')
+            ->pluck('total', 'type');
+
         $paymentCategoryStatus = [];
         foreach ($paymentCategories as $category) {
-            $paidTotal = \App\Models\Payment::where('tenant_id', $id)
-                ->where('type', $category)
-                ->where('status', 'Paid')
-                ->sum('amount');
-            
+            $paidTotal = (float) ($categoryTotals[$category] ?? 0);
             $paymentCategoryStatus[] = [
                 'category' => $category,
                 'status' => $paidTotal > 0 ? 'Paid' : 'Unpaid',

@@ -13,15 +13,21 @@ class UserController extends Controller
     /**
      * Display a listing of users.
      */
-    public function index()
+    public function index(Request $request)
     {
         // Check if user is super admin
         if (!in_array(Auth::user()->role, ['super_admin', 'admin'])) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        $users = User::orderBy('created_at', 'desc')->get();
-        return response()->json($users);
+        $query = User::orderBy('created_at', 'desc');
+
+        if ($request->has('page') || $request->has('per_page')) {
+            $perPage = (int) $request->get('per_page', 15);
+            return response()->json($query->paginate($perPage));
+        }
+
+        return response()->json($query->get());
     }
 
     /**

@@ -14,6 +14,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
+        $middleware->api(prepend: [
+            \App\Http\Middleware\SanitizeAndProtectInput::class,
+        ]);
         $middleware->alias([
             'session.active' => \App\Http\Middleware\EnsureActiveSession::class,
         ]);

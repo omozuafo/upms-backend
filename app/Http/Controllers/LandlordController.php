@@ -8,13 +8,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 
 class LandlordController extends Controller
 {
     /**
      * Display a listing of landlords.
      */
-    public function index()
+    public function index(Request $request)
     {
         $user = Auth::user();
         
@@ -23,12 +24,16 @@ class LandlordController extends Controller
             return response()->json(['error' => 'Unauthorized'], 403);
         }
         
-        $landlords = User::where('role', 'landlord')
+        $query = User::where('role', 'landlord')
             ->withCount('properties')
-            ->with('properties')
-            ->get();
+            ->with('properties');
         
-        return response()->json($landlords);
+        if ($request->has('page') || $request->has('per_page')) {
+            $perPage = (int) $request->get('per_page', 15);
+            return response()->json($query->paginate($perPage));
+        }
+
+        return response()->json($query->get());
     }
 
     /**
@@ -66,58 +71,62 @@ class LandlordController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
         
-        $landlord = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => 'landlord',
-            'phone' => $request->phone,
-            'company_name' => $request->company_name,
-        ]);
+        $landlord = DB::transaction(function () use ($request) {
+            $landlord = User::create([
+                'name' => $request->name,
+                'email' => strtolower($request->email),
+                'password' => Hash::make($request->password),
+                'role' => 'landlord',
+                'phone' => $request->phone,
+                'company_name' => $request->company_name,
+            ]);
 
-        // Associate existing property if provided (Must be currently unassigned)
-        if ($request->filled('existing_property_id')) {
-            $existingProperty = Property::where('id', $request->existing_property_id)->first();
-            if ($existingProperty && $existingProperty->landlord_id !== null) {
-                return response()->json(['error' => 'This property is already assigned to another landlord. Assigned properties can only be reassigned by editing the property directly.'], 422);
-            }
-            if ($existingProperty) {
-                $existingProperty->update(['landlord_id' => $landlord->id]);
-            }
-        } 
-        // Or Create new Property if property_name is provided
-        else if ($request->filled('property_name')) {
-            $imagePaths = [];
-            if ($request->hasFile('property_images')) {
-                $images = $request->file('property_images');
-                foreach ($images as $image) {
-                    $path = $image->store('properties', 'public');
-                    $imagePaths[] = $path;
+            // Associate existing property if provided
+            if ($request->filled('existing_property_id')) {
+                $existingProperty = Property::where('id', $request->existing_property_id)->first();
+                if ($existingProperty && $existingProperty->landlord_id !== null) {
+                    throw new \Exception('This property is already assigned to another landlord.');
+                }
+                if ($existingProperty) {
+                    $existingProperty->update(['landlord_id' => $landlord->id]);
+                }
+            } 
+            // Or Create new Property if property_name is provided
+            else if ($request->filled('property_name')) {
+                $imagePaths = [];
+                if ($request->hasFile('property_images')) {
+                    $images = $request->file('property_images');
+                    foreach ($images as $image) {
+                        $path = $image->store('properties', 'public');
+                        $imagePaths[] = $path;
+                    }
+                }
+
+                $property = Property::create([
+                    'name' => $request->property_name,
+                    'address' => $request->property_address,
+                    'type' => $request->property_type ?? 'Residential',
+                    'status' => 'Active',
+                    'units_count' => 1,
+                    'landlord_id' => $landlord->id,
+                    'description' => $request->property_description,
+                    'images' => $imagePaths,
+                ]);
+
+                // Create Unit if provided
+                if ($request->filled('unit_number')) {
+                    $property->units()->create([
+                        'unit_number' => $request->unit_number,
+                        'rent_amount' => $request->unit_rent,
+                        'type' => $request->unit_type ?? 'Standard',
+                        'floor' => $request->unit_floor,
+                        'status' => 'Vacant',
+                    ]);
                 }
             }
 
-            $property = Property::create([
-                'name' => $request->property_name,
-                'address' => $request->property_address,
-                'type' => $request->property_type ?? 'Residential',
-                'status' => 'Active',
-                'units_count' => 1, // Start with 1 unit
-                'landlord_id' => $landlord->id,
-                'description' => $request->property_description,
-                'images' => $imagePaths, // Cast will handle json_encode
-            ]);
-
-            // Create Unit if provided and property was created
-            if ($request->filled('unit_number')) {
-                $property->units()->create([
-                    'unit_number' => $request->unit_number,
-                    'rent_amount' => $request->unit_rent,
-                    'type' => $request->unit_type ?? 'Standard',
-                    'floor' => $request->unit_floor,
-                    'status' => 'Vacant',
-                ]);
-            }
-        }
+            return $landlord;
+        });
         
         return response()->json($landlord, 201);
     }
