@@ -24,11 +24,49 @@ echo "==> Clearing cached configurations..."
 php artisan config:clear || true
 php artisan route:clear || true
 
+echo "==> Probing database connection..."
+USE_SQLITE=0
+if [ "$DB_CONNECTION" = "pgsql" ] || [ -n "$DATABASE_URL" ]; then
+    php -r '
+        $url = getenv("DATABASE_URL") ?: getenv("DB_URL");
+        $host = getenv("DB_HOST");
+        $port = getenv("DB_PORT") ?: 5432;
+        $db = getenv("DB_DATABASE") ?: "upms_db";
+        $user = getenv("DB_USERNAME") ?: "upms";
+        $pass = getenv("DB_PASSWORD") ?: "";
+        if ($url) {
+            $p = parse_url($url);
+            if (!empty($p["host"])) $host = $p["host"];
+            if (!empty($p["port"])) $port = $p["port"];
+            if (!empty($p["path"])) $db = ltrim($p["path"], "/");
+            if (!empty($p["user"])) $user = $p["user"];
+            if (isset($p["pass"])) $pass = $p["pass"];
+        }
+        if (!$host) { exit(1); }
+        try {
+            $pdo = new PDO("pgsql:host=$host;port=$port;dbname=$db;connect_timeout=3", $user, $pass, [PDO::ATTR_TIMEOUT => 3]);
+            echo "==> Connected to PostgreSQL successfully." . PHP_EOL;
+            exit(0);
+        } catch (\Throwable $e) {
+            echo "==> PostgreSQL connection test failed: " . $e->getMessage() . PHP_EOL;
+            exit(1);
+        }
+    ' || USE_SQLITE=1
+fi
+
+if [ "$USE_SQLITE" = "1" ] || [ "$DB_CONNECTION" = "sqlite" ] || [ -z "$DB_CONNECTION" ]; then
+    echo "==> Using SQLite database engine..."
+    export DB_CONNECTION=sqlite
+    export SESSION_DRIVER=file
+    export CACHE_STORE=file
+    export QUEUE_CONNECTION=sync
+fi
+
 echo "==> Running database migrations..."
-php artisan migrate --force || echo "==> Notice: Migration could not complete on primary DB, fallback will handle it"
+php artisan migrate --force || echo "==> Notice: Migration output logged above"
 
 echo "==> Ensuring admin users have correct passwords..."
-php artisan admin:ensure || echo "==> Notice: Admin ensure could not complete on primary DB, fallback will handle it"
+php artisan admin:ensure || echo "==> Notice: Admin ensure output logged above"
 
 echo "==> Starting Apache server on port ${PORT}..."
 exec apache2-foreground

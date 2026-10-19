@@ -18,11 +18,11 @@ services:
       - key: FRONTEND_URL
         value: https://upms-frontend.vercel.app
       - key: SESSION_DRIVER
-        value: database
+        value: file
       - key: CACHE_STORE
-        value: database
+        value: file
       - key: QUEUE_CONNECTION
-        value: database
+        value: sync
       - key: BROADCAST_CONNECTION
         value: log
 

@@ -27,24 +27,28 @@ class AppServiceProvider extends ServiceProvider
             try {
                 \Illuminate\Support\Facades\DB::connection('pgsql')->getPdo();
             } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('PostgreSQL unavailable at runtime, switching to SQLite: ' . $e->getMessage());
                 \Illuminate\Support\Facades\Config::set('database.default', 'sqlite');
+                \Illuminate\Support\Facades\Config::set('session.driver', 'file');
+                \Illuminate\Support\Facades\Config::set('cache.default', 'file');
                 \Illuminate\Support\Facades\DB::purge('pgsql');
                 \Illuminate\Support\Facades\DB::setDefaultConnection('sqlite');
-
-                $sqlitePath = database_path('database.sqlite');
-                if (!file_exists($sqlitePath)) {
-                    touch($sqlitePath);
-                }
-
-                try {
-                    if (!\Illuminate\Support\Facades\Schema::connection('sqlite')->hasTable('users')) {
-                        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-                        \Illuminate\Support\Facades\Artisan::call('admin:ensure');
-                    }
-                } catch (\Throwable $migrationError) {
-                    \Illuminate\Support\Facades\Log::warning('SQLite auto-migration notice: ' . $migrationError->getMessage());
-                }
             }
+        }
+
+        // Ensure database tables and superadmin exist
+        try {
+            $sqlitePath = database_path('database.sqlite');
+            if (config('database.default') === 'sqlite' && !file_exists($sqlitePath)) {
+                touch($sqlitePath);
+            }
+
+            if (!\Illuminate\Support\Facades\Schema::hasTable('users')) {
+                \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+                \Illuminate\Support\Facades\Artisan::call('admin:ensure');
+            }
+        } catch (\Throwable $migrationError) {
+            \Illuminate\Support\Facades\Log::warning('Auto-migration notice: ' . $migrationError->getMessage());
         }
         // Global API rate limiter per user/IP
         RateLimiter::for('api', function (Request $request) {

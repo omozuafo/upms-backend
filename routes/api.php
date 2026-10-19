@@ -12,11 +12,20 @@ Route::get('/health', function () {
 // Diagnostic DB check endpoint
 Route::get('/debug-db', function () {
     try {
-        $pdo = \Illuminate\Support\Facades\DB::connection()->getPdo();
+        $hasUsersTable = false;
+        try {
+            $pdo = \Illuminate\Support\Facades\DB::connection()->getPdo();
+            $hasUsersTable = \Illuminate\Support\Facades\Schema::hasTable('users');
+        } catch (\Throwable $primaryErr) {
+            \Illuminate\Support\Facades\Config::set('database.default', 'sqlite');
+            \Illuminate\Support\Facades\DB::purge();
+            \Illuminate\Support\Facades\DB::setDefaultConnection('sqlite');
+            $hasUsersTable = \Illuminate\Support\Facades\Schema::hasTable('users');
+        }
+
         $dbName = \Illuminate\Support\Facades\DB::connection()->getDatabaseName();
         $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
         
-        $hasUsersTable = \Illuminate\Support\Facades\Schema::hasTable('users');
         $migrated = false;
         if (!$hasUsersTable || request()->query('migrate') === 'true') {
             \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
