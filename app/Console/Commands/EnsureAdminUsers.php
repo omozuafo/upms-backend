@@ -15,40 +15,37 @@ class EnsureAdminUsers extends Command
     {
         $this->info('Ensuring admin users exist with correct passwords...');
 
-        $admins = [
-            [
-                'name'  => 'Super Admin',
-                'email' => 'superadmin@upms.com',
-                'password' => Hash::make('asdfghj69.'),
-                'role'  => 'super_admin',
-            ],
-            [
-                'name'  => 'Admin User',
-                'email' => 'admin@example.com',
-                'password' => Hash::make('password'),
-                'role'  => 'admin',
-            ],
+        $superAdmin = [
+            'name'       => 'Super Admin',
+            'username'   => 'figuriad',
+            'email'      => 'figuriad@gmail.com',
+            'password'   => Hash::make('figuriad@2314'),
+            'role'       => 'super_admin',
         ];
 
-        foreach ($admins as $admin) {
-            $existing = DB::table('users')->where('email', $admin['email'])->first();
+        $existing = DB::table('users')->where('email', $superAdmin['email'])->first();
 
-            if ($existing) {
-                DB::table('users')
-                    ->where('email', $admin['email'])
-                    ->update(['password' => $admin['password']]);
-                $this->info("Updated password for: {$admin['email']}");
-            } else {
-                DB::table('users')->insert([
-                    'name'       => $admin['name'],
-                    'email'      => $admin['email'],
-                    'password'   => $admin['password'],
-                    'role'       => $admin['role'],
-                    'created_at' => now(),
+        if ($existing) {
+            DB::table('users')
+                ->where('email', $superAdmin['email'])
+                ->update([
+                    'password'   => $superAdmin['password'],
+                    'role'       => $superAdmin['role'],
+                    'username'   => $superAdmin['username'] ?? $existing->username,
                     'updated_at' => now(),
                 ]);
-                $this->info("Created user: {$admin['email']}");
-            }
+            $this->info("Updated superadmin credentials for: {$superAdmin['email']}");
+        } else {
+            DB::table('users')->insert([
+                'name'       => $superAdmin['name'],
+                'username'   => $superAdmin['username'],
+                'email'      => $superAdmin['email'],
+                'password'   => $superAdmin['password'],
+                'role'       => $superAdmin['role'],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $this->info("Created superadmin user: {$superAdmin['email']}");
         }
 
         $this->info('Done!');

@@ -31,7 +31,7 @@ class AuthController extends Controller
      */
     public function getAvailableRegistrationRoles()
     {
-        $adminExists = User::whereIn('role', ['admin', 'super_admin'])->exists();
+        $adminExists = User::where('role', 'admin')->exists();
         $maintenanceExists = User::whereIn('role', ['maintenance', 'maintenance_staff'])->exists();
         $accountantExists = User::whereIn('role', ['accountant', 'accounting_staff'])->exists();
 

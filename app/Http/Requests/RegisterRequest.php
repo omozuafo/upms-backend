@@ -45,7 +45,7 @@ class RegisterRequest extends FormRequest
                 Rule::in(['admin', 'maintenance', 'maintenance_staff', 'accountant', 'accounting_staff', 'landlord', 'tenant']),
                 function ($attribute, $value, $fail) {
                     if ($value === 'admin') {
-                        if (User::whereIn('role', ['admin', 'super_admin'])->exists()) {
+                        if (User::where('role', 'admin')->exists()) {
                             $fail('Registration for the Admin role is closed because an account already exists.');
                         }
                     } elseif (in_array($value, ['maintenance', 'maintenance_staff'])) {
