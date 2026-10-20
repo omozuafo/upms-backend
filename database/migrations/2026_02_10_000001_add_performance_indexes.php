@@ -3,65 +3,65 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
+    private function addIndexSafely($table, $columns, $name = null)
+    {
+        try {
+            Schema::table($table, function (Blueprint $t) use ($columns, $name) {
+                if ($name) {
+                    $t->index($columns, $name);
+                } else {
+                    $t->index($columns);
+                }
+            });
+        } catch (\Throwable $e) {
+            // Ignore duplicate key/index errors
+        }
+    }
+
     /**
      * Run the migrations.
      */
     public function up(): void
     {
-        // Add indexes for better query performance
-        
-        // Properties table indexes
-        Schema::table('properties', function (Blueprint $table) {
-            $table->index('landlord_id');
-            $table->index('status');
-            $table->index(['status', 'landlord_id']);
-        });
+        // Properties
+        $this->addIndexSafely('properties', 'landlord_id');
+        $this->addIndexSafely('properties', 'status');
+        $this->addIndexSafely('properties', ['status', 'landlord_id']);
 
-        // Units table indexes
-        Schema::table('units', function (Blueprint $table) {
-            $table->index('property_id');
-            $table->index('tenant_id');
-            $table->index('status');
-            $table->index(['property_id', 'status']);
-        });
+        // Units
+        $this->addIndexSafely('units', 'property_id');
+        $this->addIndexSafely('units', 'tenant_id');
+        $this->addIndexSafely('units', 'status');
+        $this->addIndexSafely('units', ['property_id', 'status']);
 
-        // Leases table indexes
-        Schema::table('leases', function (Blueprint $table) {
-            $table->index('tenant_id');
-            $table->index('unit_id');
-            // Note: leases table does NOT have a property_id column
-            $table->index('status');
-            $table->index(['status', 'end_date']);
-            $table->index(['tenant_id', 'status']);
-        });
+        // Leases
+        $this->addIndexSafely('leases', 'tenant_id');
+        $this->addIndexSafely('leases', 'unit_id');
+        $this->addIndexSafely('leases', 'status');
+        $this->addIndexSafely('leases', ['status', 'end_date']);
+        $this->addIndexSafely('leases', ['tenant_id', 'status']);
 
-        // Payments table indexes
-        Schema::table('payments', function (Blueprint $table) {
-            $table->index('tenant_id');
-            $table->index('lease_id');
-            $table->index('property_id');
-            $table->index('status');
-            $table->index(['status', 'payment_date']);
-        });
+        // Payments
+        $this->addIndexSafely('payments', 'tenant_id');
+        $this->addIndexSafely('payments', 'lease_id');
+        $this->addIndexSafely('payments', 'property_id');
+        $this->addIndexSafely('payments', 'status');
+        $this->addIndexSafely('payments', ['status', 'payment_date']);
 
-        // Issues table indexes
-        Schema::table('issues', function (Blueprint $table) {
-            $table->index('property_id');
-            $table->index('unit_id');
-            $table->index('reported_by');
-            $table->index('assigned_to');
-            $table->index('status');
-            $table->index(['status', 'priority']);
-        });
+        // Issues
+        $this->addIndexSafely('issues', 'property_id');
+        $this->addIndexSafely('issues', 'unit_id');
+        $this->addIndexSafely('issues', 'reported_by');
+        $this->addIndexSafely('issues', 'assigned_to');
+        $this->addIndexSafely('issues', 'status');
+        $this->addIndexSafely('issues', ['status', 'priority']);
 
-        // Users table indexes
-        // Note: email already has a unique index from the create_users_table migration
-        Schema::table('users', function (Blueprint $table) {
-            $table->index('role');
-        });
+        // Users
+        $this->addIndexSafely('users', 'role');
     }
 
     /**
@@ -69,49 +69,5 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Remove indexes
-        Schema::table('properties', function (Blueprint $table) {
-            $table->dropIndex(['landlord_id']);
-            $table->dropIndex(['status']);
-            $table->dropIndex(['status', 'landlord_id']);
-        });
-
-        Schema::table('units', function (Blueprint $table) {
-            $table->dropIndex(['property_id']);
-            $table->dropIndex(['tenant_id']);
-            $table->dropIndex(['status']);
-            $table->dropIndex(['property_id', 'status']);
-        });
-
-        Schema::table('leases', function (Blueprint $table) {
-            $table->dropIndex(['tenant_id']);
-            $table->dropIndex(['unit_id']);
-            // Note: no property_id index to drop
-            $table->dropIndex(['status']);
-            $table->dropIndex(['status', 'end_date']);
-            $table->dropIndex(['tenant_id', 'status']);
-        });
-
-        Schema::table('payments', function (Blueprint $table) {
-            $table->dropIndex(['tenant_id']);
-            $table->dropIndex(['lease_id']);
-            $table->dropIndex(['property_id']);
-            $table->dropIndex(['status']);
-            $table->dropIndex(['status', 'payment_date']);
-        });
-
-        Schema::table('issues', function (Blueprint $table) {
-            $table->dropIndex(['property_id']);
-            $table->dropIndex(['unit_id']);
-            $table->dropIndex(['reported_by']);
-            $table->dropIndex(['assigned_to']);
-            $table->dropIndex(['status']);
-            $table->dropIndex(['status', 'priority']);
-        });
-
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropIndex(['role']);
-            // Note: email unique index is managed by create_users_table migration
-        });
     }
 };
